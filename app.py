@@ -5,6 +5,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import numpy as np
 from scipy import stats
+from datetime import datetime, timedelta
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -105,6 +106,11 @@ confidence_level = st.sidebar.selectbox(
 show_p_values = st.sidebar.checkbox("Show Statistical Significance", value=True)
 show_confidence_intervals = st.sidebar.checkbox("Show Confidence Intervals", value=True)
 chart_height = st.sidebar.slider("Chart Height", 400, 800, 500)
+
+# Time series settings (NEW)
+st.sidebar.header("📈 Time Series Settings")
+forecast_periods = st.sidebar.slider("Forecast Periods", 1, 24, 6, help="Number of periods to forecast ahead")
+trend_window = st.sidebar.slider("Trend Analysis Window", 6, 36, 12, help="Window size for trend analysis")
 
 # Advanced statistical settings
 with st.sidebar.expander("🔬 Advanced Statistical Options"):
@@ -265,6 +271,98 @@ def bootstrap_correlation(x, y, n_bootstrap=1000, confidence_level=0.95):
     except:
         return None
 
+# NEW TIME SERIES FUNCTIONS
+def analyze_time_series_trend(data, variable, window_size=12):
+    """Analyze time series trends with statistical significance"""
+    try:
+        if 'Date' not in data.columns or variable not in data.columns:
+            return None
+        
+        # Clean and sort data
+        ts_data = data[['Date', variable]].dropna().sort_values('Date')
+        if len(ts_data) < window_size:
+            return None
+        
+        # Calculate trend using linear regression
+        x_numeric = pd.to_numeric(ts_data['Date'])
+        y_values = ts_data[variable]
+        
+        slope, intercept, r_value, p_value, std_err = stats.linregress(x_numeric, y_values)
+        
+        # Trend direction and strength
+        trend_direction = "Upward" if slope > 0 else "Downward" if slope < 0 else "Flat"
+        trend_strength = "Strong" if abs(r_value) > 0.7 else "Moderate" if abs(r_value) > 0.4 else "Weak"
+        
+        # Calculate percentage change
+        first_val = y_values.iloc[0]
+        last_val = y_values.iloc[-1]
+        total_change = ((last_val / first_val) - 1) * 100 if first_val != 0 else 0
+        
+        # Rolling statistics
+        rolling_mean = ts_data[variable].rolling(window=window_size).mean()
+        rolling_std = ts_data[variable].rolling(window=window_size).std()
+        volatility = (rolling_std / rolling_mean).mean() * 100
+        
+        return {
+            'trend_direction': trend_direction,
+            'trend_strength': trend_strength,
+            'slope': slope,
+            'r_squared': r_value**2,
+            'p_value': p_value,
+            'total_change_pct': total_change,
+            'volatility': volatility,
+            'data_points': len(ts_data),
+            'is_significant': p_value < 0.05
+        }
+    except:
+        return None
+
+def simple_forecast(data, variable, periods=6):
+    """Simple linear trend forecasting"""
+    try:
+        if 'Date' not in data.columns or variable not in data.columns:
+            return None
+        
+        # Clean and sort data
+        ts_data = data[['Date', variable]].dropna().sort_values('Date')
+        if len(ts_data) < 10:
+            return None
+        
+        # Use recent data for forecasting
+        recent_data = ts_data.tail(min(24, len(ts_data)))
+        
+        # Linear regression on recent data
+        x_numeric = pd.to_numeric(recent_data['Date'])
+        y_values = recent_data[variable]
+        
+        slope, intercept, _, _, _ = stats.linregress(x_numeric, y_values)
+        
+        # Generate forecast dates
+        last_date = ts_data['Date'].max()
+        forecast_dates = [last_date + timedelta(days=30*i) for i in range(1, periods+1)]
+        forecast_x = pd.to_numeric(pd.Series(forecast_dates))
+        
+        # Calculate forecasts
+        forecast_values = slope * forecast_x + intercept
+        
+        # Calculate confidence intervals (simple approach)
+        residuals = y_values - (slope * x_numeric + intercept)
+        mse = np.mean(residuals**2)
+        forecast_std = np.sqrt(mse)
+        
+        forecast_upper = forecast_values + 1.96 * forecast_std
+        forecast_lower = forecast_values - 1.96 * forecast_std
+        
+        return {
+            'forecast_dates': forecast_dates,
+            'forecast_values': forecast_values,
+            'forecast_upper': forecast_upper,
+            'forecast_lower': forecast_lower,
+            'forecast_std': forecast_std
+        }
+    except:
+        return None
+
 if uploaded_file:
     try:
         # Load data with progress
@@ -275,6 +373,24 @@ if uploaded_file:
         
         # Get numeric columns
         numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
+        
+        # Check for date column
+        date_cols = [col for col in df.columns if 'date' in col.lower()]
+        has_date_data = len(date_cols) > 0
+        
+        if has_date_data and date_cols[0] not in df.columns:
+            # Try to convert the first date-like column
+            try:
+                df['Date'] = pd.to_datetime(df[date_cols[0]], errors='coerce')
+                has_date_data = not df['Date'].isnull().all()
+            except:
+                has_date_data = False
+        elif 'Date' in df.columns:
+            try:
+                df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+                has_date_data = not df['Date'].isnull().all()
+            except:
+                has_date_data = False
         
         # Key Metrics Row
         col1, col2, col3, col4 = st.columns(4)
@@ -310,13 +426,14 @@ if uploaded_file:
                     help="Average absolute correlation across variables"
                 )
         
-        # Create tabs for different analyses
-        tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        # Create tabs for different analyses - NOW WITH 6 TABS
+        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
             "📊 Data Overview", 
             "🌡️ Correlation Analysis", 
             "🎯 PFAD Insights", 
             "📈 Advanced Statistics",
-            "🔬 Statistical Tests"
+            "🔬 Statistical Tests",
+            "📈 Time Series Analysis"  # NEW TAB
         ])
         
         with tab1:
@@ -977,15 +1094,7 @@ if uploaded_file:
                         sig_df = pd.DataFrame(sig_pairs)
                         sig_df = sig_df.sort_values('P-Value')
                         
-                        # Color coding for significance
-                        def color_significance(val):
-                            if val == 'Yes':
-                                return 'background-color: #d5f4e6'
-                            else:
-                                return 'background-color: #f8d7da'
-                        
-                        styled_sig_df = sig_df.style.applymap(color_significance, subset=['Significant'])
-                        st.dataframe(styled_sig_df, use_container_width=True)
+                        st.dataframe(sig_df.round(4), use_container_width=True)
                         
                         # Summary statistics
                         total_pairs = len(sig_pairs)
@@ -1058,6 +1167,441 @@ if uploaded_file:
             
             else:
                 st.info("Numeric variables needed for statistical testing")
+        
+        # NEW TIME SERIES TAB
+        with tab6:
+            st.header("📈 Professional Time Series Analysis")
+            
+            if has_date_data and len(numeric_cols) > 0:
+                # Time series overview metrics
+                st.subheader("📊 Time Series Dataset Overview")
+                
+                col1, col2, col3, col4 = st.columns(4)
+                
+                with col1:
+                    date_span = (df['Date'].max() - df['Date'].min()).days
+                    st.metric("Date Span (Days)", f"{date_span:,}")
+                
+                with col2:
+                    data_frequency = len(df) / (date_span / 30) if date_span > 0 else 0
+                    st.metric("Avg Data Points/Month", f"{data_frequency:.1f}")
+                
+                with col3:
+                    missing_dates = df['Date'].isnull().sum()
+                    st.metric("Missing Dates", f"{missing_dates:,}")
+                
+                with col4:
+                    if pfad_col and pfad_col in df.columns:
+                        pfad_trend_result = analyze_time_series_trend(df, pfad_col, trend_window)
+                        if pfad_trend_result:
+                            st.metric("PFAD Trend", pfad_trend_result['trend_direction'])
+                        else:
+                            st.metric("PFAD Trend", "N/A")
+                    else:
+                        st.metric("PFAD Trend", "No PFAD Data")
+                
+                # Variable selection for detailed analysis
+                st.subheader("🎯 Detailed Variable Analysis")
+                
+                ts_variable = st.selectbox(
+                    "Select Variable for Time Series Analysis:",
+                    options=numeric_cols,
+                    help="Choose a variable to analyze trends, patterns, and forecasts"
+                )
+                
+                if ts_variable:
+                    # Time series plot with trend analysis
+                    ts_data = df[['Date', ts_variable]].dropna().sort_values('Date')
+                    
+                    if len(ts_data) >= 10:
+                        # Main time series plot
+                        fig_ts = go.Figure()
+                        
+                        # Add main data line
+                        fig_ts.add_trace(go.Scatter(
+                            x=ts_data['Date'],
+                            y=ts_data[ts_variable],
+                            mode='lines+markers',
+                            name=ts_variable,
+                            line=dict(width=2, color='blue'),
+                            marker=dict(size=4)
+                        ))
+                        
+                        # Add trend line
+                        if len(ts_data) > 1:
+                            x_numeric = pd.to_numeric(ts_data['Date'])
+                            z = np.polyfit(x_numeric, ts_data[ts_variable], 1)
+                            p = np.poly1d(z)
+                            
+                            fig_ts.add_trace(go.Scatter(
+                                x=ts_data['Date'],
+                                y=p(x_numeric),
+                                mode='lines',
+                                name='Linear Trend',
+                                line=dict(color='red', width=2, dash='dash')
+                            ))
+                        
+                        # Add moving average
+                        if len(ts_data) > trend_window:
+                            moving_avg = ts_data[ts_variable].rolling(window=trend_window).mean()
+                            fig_ts.add_trace(go.Scatter(
+                                x=ts_data['Date'],
+                                y=moving_avg,
+                                mode='lines',
+                                name=f'{trend_window}-Period Moving Average',
+                                line=dict(color='green', width=2)
+                            ))
+                        
+                        fig_ts.update_layout(
+                            title=f"📈 Time Series Analysis: {ts_variable}",
+                            xaxis_title="Date",
+                            yaxis_title=ts_variable,
+                            height=chart_height,
+                            hovermode='x unified',
+                            showlegend=True
+                        )
+                        
+                        st.plotly_chart(fig_ts, use_container_width=True)
+                        
+                        # Statistical trend analysis
+                        trend_result = analyze_time_series_trend(df, ts_variable, trend_window)
+                        
+                        if trend_result:
+                            st.subheader("📊 Statistical Trend Analysis")
+                            
+                            col1, col2, col3, col4 = st.columns(4)
+                            
+                            with col1:
+                                st.metric("Trend Direction", trend_result['trend_direction'])
+                            
+                            with col2:
+                                st.metric("Trend Strength", trend_result['trend_strength'])
+                            
+                            with col3:
+                                st.metric("R-squared", f"{trend_result['r_squared']:.3f}")
+                            
+                            with col4:
+                                significance = "Significant" if trend_result['is_significant'] else "Not Significant"
+                                st.metric("Statistical Significance", significance)
+                            
+                            # Detailed trend statistics
+                            st.markdown(f"""
+                            <div class="statistical-box">
+                            <h4>📈 Detailed Trend Statistics</h4>
+                            <p><strong>Total Change:</strong> {trend_result['total_change_pct']:.2f}%</p>
+                            <p><strong>Volatility (CV):</strong> {trend_result['volatility']:.2f}%</p>
+                            <p><strong>P-Value:</strong> {trend_result['p_value']:.6f}</p>
+                            <p><strong>Data Points:</strong> {trend_result['data_points']}</p>
+                            <p><strong>Slope:</strong> {trend_result['slope']:.6f}</p>
+                            </div>
+                            """, unsafe_allow_html=True)
+                        
+                        # Forecasting section
+                        st.subheader("🔮 Price Forecasting")
+                        
+                        forecast_result = simple_forecast(df, ts_variable, forecast_periods)
+                        
+                        if forecast_result:
+                            # Forecast plot
+                            fig_forecast = go.Figure()
+                            
+                            # Historical data
+                            fig_forecast.add_trace(go.Scatter(
+                                x=ts_data['Date'],
+                                y=ts_data[ts_variable],
+                                mode='lines+markers',
+                                name='Historical Data',
+                                line=dict(color='blue', width=2)
+                            ))
+                            
+                            # Forecast line
+                            fig_forecast.add_trace(go.Scatter(
+                                x=forecast_result['forecast_dates'],
+                                y=forecast_result['forecast_values'],
+                                mode='lines+markers',
+                                name='Forecast',
+                                line=dict(color='red', width=2, dash='dash'),
+                                marker=dict(size=6)
+                            ))
+                            
+                            # Confidence intervals
+                            fig_forecast.add_trace(go.Scatter(
+                                x=forecast_result['forecast_dates'],
+                                y=forecast_result['forecast_upper'],
+                                mode='lines',
+                                line=dict(width=0),
+                                showlegend=False,
+                                name='Upper CI'
+                            ))
+                            
+                            fig_forecast.add_trace(go.Scatter(
+                                x=forecast_result['forecast_dates'],
+                                y=forecast_result['forecast_lower'],
+                                mode='lines',
+                                line=dict(width=0),
+                                fill='tonexty',
+                                fillcolor='rgba(255,0,0,0.2)',
+                                showlegend=False,
+                                name='95% Confidence Interval'
+                            ))
+                            
+                            fig_forecast.update_layout(
+                                title=f"📈 {ts_variable} Forecast ({forecast_periods} periods ahead)",
+                                xaxis_title="Date",
+                                yaxis_title=ts_variable,
+                                height=500,
+                                hovermode='x unified'
+                            )
+                            
+                            st.plotly_chart(fig_forecast, use_container_width=True)
+                            
+                            # Forecast table
+                            forecast_df = pd.DataFrame({
+                                'Date': forecast_result['forecast_dates'],
+                                'Forecast': forecast_result['forecast_values'].round(2),
+                                'Lower 95% CI': forecast_result['forecast_lower'].round(2),
+                                'Upper 95% CI': forecast_result['forecast_upper'].round(2)
+                            })
+                            
+                            st.subheader("📋 Forecast Values")
+                            st.dataframe(forecast_df, use_container_width=True)
+                            
+                            # Business insights
+                            st.subheader("💡 Strategic Procurement Insights")
+                            
+                            current_value = ts_data[ts_variable].iloc[-1]
+                            forecast_avg = forecast_result['forecast_values'].mean()
+                            change_pct = ((forecast_avg / current_value) - 1) * 100 if current_value != 0 else 0
+                            
+                            st.markdown("""
+                            <div class="insight-box">
+                            <h3>🎯 Procurement Strategy Recommendations</h3>
+                            """, unsafe_allow_html=True)
+                            
+                            if change_pct > 5:
+                                st.write(f"⚠️ **Price Increase Expected**: Forecast suggests {ts_variable} may increase by ~{change_pct:.1f}% on average.")
+                                st.write("**Strategic Actions:**")
+                                st.write("• Consider forward purchasing to lock in current rates")
+                                st.write("• Evaluate alternative suppliers or substitute materials")
+                                st.write("• Negotiate long-term contracts before price increases")
+                                
+                            elif change_pct < -5:
+                                st.write(f"✅ **Price Decrease Expected**: Forecast suggests {ts_variable} may decrease by ~{abs(change_pct):.1f}% on average.")
+                                st.write("**Strategic Actions:**")
+                                st.write("• Consider delaying non-urgent purchases")
+                                st.write("• Reduce inventory levels to benefit from lower future prices")
+                                st.write("• Renegotiate existing contracts if possible")
+                                
+                            else:
+                                st.write(f"📊 **Stable Prices Expected**: Forecast suggests {ts_variable} will remain relatively stable (~{change_pct:.1f}% change).")
+                                st.write("**Strategic Actions:**")
+                                st.write("• Maintain current procurement schedules")
+                                st.write("• Focus on operational efficiency improvements")
+                                st.write("• Monitor for unexpected market changes")
+                            
+                            st.markdown("</div>", unsafe_allow_html=True)
+                        
+                        else:
+                            st.warning("⚠️ Insufficient data for reliable forecasting")
+                    
+                    else:
+                        st.warning(f"⚠️ Need at least 10 data points for time series analysis. Current: {len(ts_data)}")
+                
+                # Multi-variable trend comparison
+                if len(numeric_cols) > 1:
+                    st.subheader("📊 Multi-Variable Trend Comparison")
+                    
+                    # Select variables for comparison
+                    comparison_vars = st.multiselect(
+                        "Select variables to compare trends:",
+                        options=numeric_cols,
+                        default=numeric_cols[:min(4, len(numeric_cols))],
+                        help="Choose up to 4 variables for normalized trend comparison"
+                    )
+                    
+                    if len(comparison_vars) > 1:
+                        fig_multi = go.Figure()
+                        
+                        for var in comparison_vars[:4]:  # Limit to 4 for readability
+                            var_data = df[['Date', var]].dropna().sort_values('Date')
+                            
+                            if len(var_data) > 0:
+                                # Normalize to base 100
+                                first_value = var_data[var].iloc[0]
+                                if first_value != 0:
+                                    normalized_values = (var_data[var] / first_value) * 100
+                                    
+                                    fig_multi.add_trace(go.Scatter(
+                                        x=var_data['Date'],
+                                        y=normalized_values,
+                                        mode='lines',
+                                        name=var,
+                                        line=dict(width=2)
+                                    ))
+                        
+                        fig_multi.add_hline(y=100, line_dash="dash", line_color="gray", 
+                                          annotation_text="Baseline (100)")
+                        
+                        fig_multi.update_layout(
+                            title="📈 Normalized Price Trends (Base = 100)",
+                            xaxis_title="Date",
+                            yaxis_title="Normalized Value (Base = 100)",
+                            height=500,
+                            hovermode='x unified'
+                        )
+                        
+                        st.plotly_chart(fig_multi, use_container_width=True)
+                        
+                        # Trend comparison summary
+                        st.subheader("📋 Trend Comparison Summary")
+                        
+                        comparison_summary = []
+                        for var in comparison_vars:
+                            trend_result = analyze_time_series_trend(df, var, trend_window)
+                            if trend_result:
+                                comparison_summary.append({
+                                    'Variable': var,
+                                    'Trend Direction': trend_result['trend_direction'],
+                                    'Trend Strength': trend_result['trend_strength'],
+                                    'Total Change %': f"{trend_result['total_change_pct']:.2f}%",
+                                    'Volatility %': f"{trend_result['volatility']:.2f}%",
+                                    'R-squared': f"{trend_result['r_squared']:.3f}",
+                                    'Significant': 'Yes' if trend_result['is_significant'] else 'No'
+                                })
+                        
+                        if comparison_summary:
+                            summary_df = pd.DataFrame(comparison_summary)
+                            st.dataframe(summary_df, use_container_width=True)
+                
+                # Rolling correlation with PFAD (if available)
+                if pfad_col and pfad_col in numeric_cols:
+                    st.subheader("🔄 Rolling Correlation with PFAD")
+                    
+                    rolling_var = st.selectbox(
+                        "Select variable for rolling correlation with PFAD:",
+                        options=[col for col in numeric_cols if col != pfad_col],
+                        key="ts_rolling_var"
+                    )
+                    
+                    if rolling_var:
+                        # Calculate rolling correlation
+                        rolling_data = df[['Date', pfad_col, rolling_var]].dropna().sort_values('Date')
+                        
+                        if len(rolling_data) > trend_window:
+                            rolling_corr = rolling_data[pfad_col].rolling(window=trend_window).corr(rolling_data[rolling_var])
+                            
+                            fig_rolling_ts = go.Figure()
+                            
+                            # Rolling correlation
+                            fig_rolling_ts.add_trace(go.Scatter(
+                                x=rolling_data['Date'],
+                                y=rolling_corr,
+                                mode='lines',
+                                name=f'Rolling Correlation (Window: {trend_window})',
+                                line=dict(width=2, color='purple')
+                            ))
+                            
+                            # Add reference lines
+                            fig_rolling_ts.add_hline(y=0.7, line_dash="dash", line_color="green", 
+                                                   annotation_text="Strong Positive (0.7)")
+                            fig_rolling_ts.add_hline(y=-0.7, line_dash="dash", line_color="green",
+                                                   annotation_text="Strong Negative (-0.7)")
+                            fig_rolling_ts.add_hline(y=0, line_dash="solid", line_color="gray",
+                                                   annotation_text="No Correlation (0)")
+                            
+                            # Overall correlation line
+                            overall_corr = rolling_data[pfad_col].corr(rolling_data[rolling_var])
+                            fig_rolling_ts.add_hline(y=overall_corr, line_dash="dot", line_color="red",
+                                                   annotation_text=f"Overall: {overall_corr:.3f}")
+                            
+                            fig_rolling_ts.update_layout(
+                                title=f"📊 Rolling Correlation: {pfad_col} vs {rolling_var}",
+                                xaxis_title="Date",
+                                yaxis_title="Correlation Coefficient",
+                                height=400,
+                                yaxis=dict(range=[-1, 1])
+                            )
+                            
+                            st.plotly_chart(fig_rolling_ts, use_container_width=True)
+                            
+                            # Correlation stability metrics
+                            correlation_volatility = rolling_corr.std()
+                            avg_correlation = rolling_corr.mean()
+                            
+                            col1, col2, col3 = st.columns(3)
+                            
+                            with col1:
+                                st.metric("Average Correlation", f"{avg_correlation:.3f}")
+                            
+                            with col2:
+                                st.metric("Correlation Volatility", f"{correlation_volatility:.3f}")
+                            
+                            with col3:
+                                stability = 1 - (correlation_volatility / abs(avg_correlation)) if avg_correlation != 0 else 0
+                                st.metric("Relationship Stability", f"{stability:.3f}")
+                            
+                            # Business insights for correlation trends
+                            st.markdown("""
+                            <div class="statistical-box">
+                            <h4>🔄 Correlation Trend Insights</h4>
+                            """, unsafe_allow_html=True)
+                            
+                            if correlation_volatility < 0.2:
+                                st.write("✅ **Stable Relationship**: Low correlation volatility indicates a consistent relationship over time.")
+                                st.write("• Reliable for predictive procurement strategies")
+                                st.write("• Suitable for automated decision rules")
+                            else:
+                                st.write("⚠️ **Variable Relationship**: High correlation volatility suggests changing market dynamics.")
+                                st.write("• Requires adaptive procurement strategies")
+                                st.write("• Monitor for structural market changes")
+                            
+                            if abs(avg_correlation) > 0.5:
+                                st.write(f"• **Strong Average Relationship** ({avg_correlation:.3f}): Useful for forecasting and decision making")
+                            else:
+                                st.write(f"• **Moderate Average Relationship** ({avg_correlation:.3f}): Use with caution for critical decisions")
+                            
+                            st.markdown("</div>", unsafe_allow_html=True)
+                        
+                        else:
+                            st.warning(f"⚠️ Need at least {trend_window} data points for rolling correlation analysis")
+            
+            else:
+                # No time series data available
+                st.warning("⚠️ Time Series Analysis Not Available")
+                
+                if not has_date_data:
+                    st.info("""
+                    **Missing Date Information**
+                    
+                    To enable time series analysis, your dataset needs:
+                    • A column with date/time information
+                    • Dates should be in a recognizable format (YYYY-MM-DD, MM/DD/YYYY, etc.)
+                    • Column should be named 'Date' or contain 'date' in the name
+                    
+                    **Current Dataset:**
+                    • Date columns found: None
+                    • Available columns: """ + ", ".join(df.columns.tolist()[:5]) + ("..." if len(df.columns) > 5 else ""))
+                
+                if len(numeric_cols) == 0:
+                    st.info("""
+                    **Missing Numeric Data**
+                    
+                    Time series analysis requires:
+                    • At least one numeric variable to analyze
+                    • Sufficient data points (minimum 10 recommended)
+                    """)
+                
+                # Suggestions for data preparation
+                st.markdown("""
+                <div class="insight-box">
+                <h3>💡 How to Enable Time Series Analysis</h3>
+                <p><strong>1. Date Column:</strong> Ensure your Excel file has a date column</p>
+                <p><strong>2. Data Format:</strong> Use standard date formats (YYYY-MM-DD preferred)</p>
+                <p><strong>3. Column Naming:</strong> Name your date column 'Date' or include 'date' in the name</p>
+                <p><strong>4. Data Quality:</strong> Remove or fix any invalid date entries</p>
+                <p><strong>5. Sufficient Data:</strong> Have at least 10-20 data points for meaningful analysis</p>
+                </div>
+                """, unsafe_allow_html=True)
     
     except Exception as e:
         st.error(f"❌ Error processing file: {str(e)}")
@@ -1077,22 +1621,26 @@ else:
         </p>
         
         <div style="display: flex; justify-content: space-around; flex-wrap: wrap; margin: 2rem 0;">
-            <div style="flex: 1; min-width: 250px; margin: 1rem; padding: 1.5rem; background: white; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+            <div style="flex: 1; min-width: 200px; margin: 1rem; padding: 1.5rem; background: white; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
                 <h3 style="color: #667eea;">🔬 Statistical Tests</h3>
                 <p>Confidence intervals, p-values, and significance testing</p>
             </div>
-            <div style="flex: 1; min-width: 250px; margin: 1rem; padding: 1.5rem; background: white; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+            <div style="flex: 1; min-width: 200px; margin: 1rem; padding: 1.5rem; background: white; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
                 <h3 style="color: #667eea;">🔄 Bootstrap Analysis</h3>
                 <p>Robust correlation estimates with bootstrap sampling</p>
             </div>
-            <div style="flex: 1; min-width: 250px; margin: 1rem; padding: 1.5rem; background: white; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+            <div style="flex: 1; min-width: 200px; margin: 1rem; padding: 1.5rem; background: white; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
                 <h3 style="color: #667eea;">⚡ Power Analysis</h3>
                 <p>Statistical power and effect size interpretation</p>
+            </div>
+            <div style="flex: 1; min-width: 200px; margin: 1rem; padding: 1.5rem; background: white; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                <h3 style="color: #667eea;">📈 Time Series</h3>
+                <p>Trend analysis, forecasting, and temporal insights</p>
             </div>
         </div>
         
         <p style="color: #7f8c8d; font-size: 1.1em;">
-            Upload your Excel file to access advanced statistical analysis features
+            Upload your Excel file to access comprehensive analytical features
         </p>
     </div>
     """, unsafe_allow_html=True)
@@ -1102,6 +1650,6 @@ st.markdown("---")
 st.markdown("""
 <div style="text-align: center; padding: 1rem; color: #7f8c8d;">
     <p><strong>PFAD Advanced Statistical Analytics</strong> | Professional Statistical Analysis Platform</p>
-    <p>🔬 Statistical rigor • 📊 Professional insights • ⚡ Evidence-based decisions</p>
+    <p>🔬 Statistical rigor • 📊 Professional insights • ⚡ Evidence-based decisions • 📈 Time series forecasting</p>
 </div>
 """, unsafe_allow_html=True)
