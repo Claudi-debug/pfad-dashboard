@@ -655,11 +655,8 @@ if uploaded_file:
             if not has_time_data:
                 st.warning("📅 Time series analysis requires date/time information in your dataset")
                 st.info("💡 To enable time series features, ensure your data has a date column")
-                return
-            
-            if len(numeric_cols) == 0:
+            elif len(numeric_cols) == 0:
                 st.warning("🔢 No numeric variables found for time series analysis")
-                return
             
             # Variable selection for time series analysis
             ts_variable = st.selectbox(
