@@ -97,6 +97,166 @@
                 
                 # Immediate Actions
                 if procurement_recs['immediate_actions']:
+                    high_priority_count = len([a for a in procurement_recs['immediate_actions'] if a['priority'] == 'High'])
+                    if high_priority_count > 0:
+                        summary_points.append(f"**{high_priority_count} high-priority actions** require immediate attention within the next 1-2 weeks")
+                
+                # Display summary points
+                for i, point in enumerate(summary_points, 1):
+                    st.write(f"{i}. {point}")
+                
+                # Key AI Recommendations
+                st.write("\n**🎯 Top AI Recommendations:**")
+                
+                top_recommendations = []
+                
+                if procurement_recs['strategic_initiatives']:
+                    top_recommendations.append(f"Implement {procurement_recs['strategic_initiatives'][0]['initiative']} for {procurement_recs['strategic_initiatives'][0]['expected_benefit']}")
+                
+                if procurement_recs['timing_recommendations']:
+                    timing = procurement_recs['timing_recommendations'][0]
+                    top_recommendations.append(f"Use {timing['indicator']} as primary leading indicator with {timing['confidence'].lower()} confidence")
+                
+                if ai_insights.get('risk_factors'):
+                    high_risk_factors = [r for r in ai_insights['risk_factors'] if r['severity'] == 'High']
+                    if high_risk_factors:
+                        top_recommendations.append(f"Address {high_risk_factors[0]['type'].lower()} through {high_risk_factors[0]['mitigation'].lower()}")
+                
+                for i, rec in enumerate(top_recommendations, 1):
+                    st.write(f"• **Recommendation {i}:** {rec}")
+                
+                st.markdown("</div>", unsafe_allow_html=True)
+                
+                # AI Model Transparency & Explainability
+                with st.expander("🔍 AI Model Transparency & Methodology"):
+                    st.markdown("""
+                    **🤖 AI Methodology Explanation:**
+                    
+                    **Market Efficiency Analysis:**
+                    - Calculated using average absolute correlations across all variables
+                    - High efficiency (>0.6): Strong interconnected market relationships
+                    - Medium efficiency (0.3-0.6): Moderate market integration
+                    - Low efficiency (<0.3): Potential arbitrage opportunities
+                    
+                    **Volatility Assessment:**
+                    - Coefficient of variation (standard deviation / mean) × 100
+                    - Risk levels: High (>20%), Moderate (10-20%), Low (<10%)
+                    - Includes price range analysis for comprehensive risk evaluation
+                    
+                    **Predictability Score:**
+                    - Weighted composite of correlation strength (40%), number of strong correlations (30%), and inverse volatility (30%)
+                    - Scale: 0-1 where 1 represents perfect predictability
+                    - Used to determine procurement strategy recommendations
+                    
+                    **Market Regime Detection:**
+                    - Linear regression trend strength combined with volatility analysis
+                    - Momentum calculation using rolling window price changes
+                    - Confidence levels based on statistical significance and trend clarity
+                    
+                    **Risk-Opportunity Matrix:**
+                    - Two-dimensional analysis combining predictability and volatility
+                    - Four quadrants provide strategic guidance for procurement approach
+                    - Dynamic recommendations based on current market position
+                    
+                    **AI Limitations:**
+                    - Recommendations based on historical data patterns
+                    - Cannot predict external market shocks or regulatory changes
+                    - Requires sufficient data quality and quantity for accuracy
+                    - Should be combined with human expertise and market knowledge
+                    """)
+                
+                # Export AI Report
+                st.subheader("📤 Export AI Analysis")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    if st.button("📊 Generate AI Report Summary", type="primary"):
+                        # Create downloadable report summary
+                        report_data = {
+                            'AI Analysis Summary': summary_points,
+                            'Top Recommendations': top_recommendations,
+                            'Market Efficiency': ai_insights.get('market_efficiency', {}),
+                            'Volatility Assessment': ai_insights.get('volatility_assessment', {}),
+                            'Market Regime': market_regime,
+                            'Predictability Score': ai_insights.get('predictability_score', 0)
+                        }
+                        
+                        st.success("✅ AI Report generated successfully!")
+                        st.json(report_data)
+                
+                with col2:
+                    st.info("""
+                    **📋 Report Includes:**
+                    • Executive summary with key insights
+                    • Strategic recommendations and priorities
+                    • Risk assessment and mitigation strategies
+                    • Market regime analysis and timing guidance
+                    • AI model confidence and reliability metrics
+                    """)
+            
+            else:
+                # Insufficient data for AI analysis
+                st.warning("⚠️ AI Insights Engine requires more data for comprehensive analysis")
+                
+                st.markdown("""
+                <div class="insight-box">
+                <h3>🤖 AI Engine Requirements</h3>
+                <p>To unlock the full power of AI analytics, ensure your dataset contains:</p>
+                <ul>
+                    <li><strong>Multiple Variables:</strong> At least 3-4 numeric variables for correlation analysis</li>
+                    <li><strong>PFAD Data:</strong> Primary commodity data for procurement insights</li>
+                    <li><strong>Sufficient Records:</strong> Minimum 20-30 data points for reliable AI predictions</li>
+                    <li><strong>Time Series Data:</strong> Date information for trend and regime analysis</li>
+                    <li><strong>Data Quality:</strong> Clean, consistent data with minimal missing values</li>
+                </ul>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # AI Capabilities Preview
+                st.subheader("🤖 AI Capabilities Preview")
+                
+                capabilities = [
+                    {
+                        'feature': '🎯 Market Efficiency Analysis',
+                        'description': 'AI assessment of market predictability and interconnectedness',
+                        'benefit': 'Optimize procurement strategies based on market behavior'
+                    },
+                    {
+                        'feature': '📊 Smart Risk Assessment',
+                        'description': 'Automated volatility analysis and risk categorization',
+                        'benefit': 'Proactive risk management and mitigation strategies'
+                    },
+                    {
+                        'feature': '⏰ Intelligent Timing Recommendations',
+                        'description': 'AI-powered purchase timing based on leading indicators',
+                        'benefit': 'Maximize cost savings through optimal timing'
+                    },
+                    {
+                        'feature': '🏆 Competitive Intelligence',
+                        'description': 'Market position analysis and benchmark comparisons',
+                        'benefit': 'Strategic advantage through market positioning insights'
+                    },
+                    {
+                        'feature': '🔮 Predictive Analytics',
+                        'description': 'Machine learning-based price and trend forecasting',
+                        'benefit': 'Forward-looking procurement planning and budgeting'
+                    },
+                    {
+                        'feature': '🧠 Adaptive Learning',
+                        'description': 'AI models that improve with more data and feedback',
+                        'benefit': 'Continuously improving accuracy and recommendations'
+                    }
+                ]
+                
+                for cap in capabilities:
+                    st.markdown(f"""
+                    <div class="statistical-box">
+                        <h4>{cap['feature']}</h4>
+                        <p><strong>Capability:</strong> {cap['description']}</p>
+                        <p><strong>Business Value:</strong> {cap['benefit']}</p>
+                    </div>
+                    """, unsafe_allow_html=True)actions']:
                     st.markdown("#### ⚡ Immediate Actions (Next 1-4 weeks)")
                     for action in procurement_recs['immediate_actions']:
                         priority_color = {'High': '#e74c3c', 'Medium': '#f39c12', 'Low': '#27ae60'}.get(action['priority'], '#34495e')
@@ -185,128 +345,6 @@
                                 </div>
                                 """, unsafe_allow_html=True)
                 
-                # Advanced AI Analytics
-                st.subheader("🔬 Advanced AI Market Analytics")
-                
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    # AI Correlation Network
-                    if len(numeric_cols) > 2:
-                        st.markdown("#### 🔗 AI Correlation Network Analysis")
-                        
-                        corr_matrix = df[numeric_cols].corr()
-                        
-                        # Create network-style correlation visualization
-                        strong_correlations = []
-                        for i in range(len(corr_matrix.columns)):
-                            for j in range(i+1, len(corr_matrix.columns)):
-                                corr_val = corr_matrix.iloc[i, j]
-                                if abs(corr_val) > 0.5:  # Only strong correlations
-                                    strong_correlations.append({
-                                        'source': corr_matrix.columns[i],
-                                        'target': corr_matrix.columns[j],
-                                        'correlation': corr_val,
-                                        'strength': 'Strong' if abs(corr_val) > 0.7 else 'Moderate'
-                                    })
-                        
-                        if strong_correlations:
-                            network_df = pd.DataFrame(strong_correlations)
-                            st.dataframe(network_df.round(3), use_container_width=True)
-                            
-                            # Network insights
-                            st.info(f"""
-                            **AI Network Analysis:**
-                            - {len(strong_correlations)} strong market connections detected
-                            - Network density: {len(strong_correlations) / (len(numeric_cols) * (len(numeric_cols)-1) / 2):.1%}
-                            - Most connected variables drive market dynamics
-                            """)
-                        else:
-                            st.warning("No strong correlations detected for network analysis")
-                
-                with col2:
-                    # AI Risk Assessment Matrix
-                    st.markdown("#### 🎯 AI Risk-Opportunity Matrix")
-                    
-                    if ai_insights.get('volatility_assessment') and ai_insights.get('predictability_score'):
-                        volatility_pct = ai_insights['volatility_assessment']['volatility_pct']
-                        pred_score = ai_insights['predictability_score']
-                        
-                        # Create risk-opportunity quadrants
-                        if pred_score > 0.6 and volatility_pct < 15:
-                            quadrant = "🟢 Low Risk, High Opportunity"
-                            strategy = "Aggressive procurement optimization"
-                        elif pred_score > 0.6 and volatility_pct >= 15:
-                            quadrant = "🟡 High Risk, High Opportunity"
-                            strategy = "Hedged aggressive approach"
-                        elif pred_score <= 0.6 and volatility_pct < 15:
-                            quadrant = "🔵 Low Risk, Low Opportunity"
-                            strategy = "Conservative steady procurement"
-                        else:
-                            quadrant = "🔴 High Risk, Low Opportunity"
-                            strategy = "Defensive risk management"
-                        
-                        st.markdown(f"""
-                        <div class="statistical-box">
-                            <h4>{quadrant}</h4>
-                            <p><strong>AI Strategy:</strong> {strategy}</p>
-                            <p><strong>Predictability:</strong> {pred_score:.3f}</p>
-                            <p><strong>Volatility:</strong> {volatility_pct:.1f}%</p>
-                        </div>
-                        """, unsafe_allow_html=True)
-                
-                # AI Learning & Adaptation
-                st.subheader("🧠 AI Learning & Model Performance")
-                
-                col1, col2, col3 = st.columns(3)
-                
-                with col1:
-                    # Model Confidence Score
-                    if ai_insights.get('predictability_score'):
-                        conf_score = ai_insights['predictability_score']
-                        conf_pct = conf_score * 100
-                        
-                        st.metric(
-                            "AI Model Confidence",
-                            f"{conf_pct:.1f}%",
-                            help="Overall confidence in AI predictions and recommendations"
-                        )
-                        
-                        if conf_score > 0.7:
-                            st.success("🎯 High confidence - AI recommendations are reliable")
-                        elif conf_score > 0.4:
-                            st.warning("⚠️ Medium confidence - Use AI insights with caution")
-                        else:
-                            st.error("🚨 Low confidence - AI insights for reference only")
-                
-                with col2:
-                    # Data Quality Assessment
-                    data_completeness = (1 - df.isnull().sum().sum() / (len(df) * len(df.columns))) * 100
-                    st.metric(
-                        "Data Quality Score",
-                        f"{data_completeness:.1f}%",
-                        help="Quality of input data affecting AI accuracy"
-                    )
-                    
-                    if data_completeness > 90:
-                        st.success("✅ Excellent data quality")
-                    elif data_completeness > 70:
-                        st.warning("⚠️ Good data quality")
-                    else:
-                        st.error("🚨 Poor data quality may affect AI accuracy")
-                
-                with col3:
-                    # AI Recommendation Reliability
-                    if ai_insights.get('correlation_insights'):
-                        total_strong = ai_insights['correlation_insights']['total_significant']
-                        reliability = min(100, (total_strong / max(1, len(numeric_cols)-1)) * 100)
-                        
-                        st.metric(
-                            "Recommendation Reliability",
-                            f"{reliability:.0f}%",
-                            help="Reliability of AI recommendations based on statistical significance"
-                        )
-                
                 # AI Insights Summary Report
                 st.subheader("📋 AI Executive Summary Report")
                 
@@ -334,8 +372,28 @@
                     pred_level = "high" if pred_score > 0.7 else "moderate" if pred_score > 0.4 else "low"
                     summary_points.append(f"AI predictability assessment is **{pred_level}** ({pred_score:.3f}), enabling {'systematic' if pred_score > 0.6 else 'adaptive'} procurement strategies")
                 
-                if procurement_recs['immediate_actions']:
-                    high_priority_count = len([a for a in procurement_recs['immediate_actions'] if a['priority'] == 'High'])
+                # Display summary points
+                for i, point in enumerate(summary_points, 1):
+                    st.write(f"{i}. {point}")
+                
+                st.markdown("</div>", unsafe_allow_html=True)
+                
+            else:
+                # Insufficient data for AI analysis
+                st.warning("⚠️ AI Insights Engine requires more data for comprehensive analysis")
+                
+                st.markdown("""
+                <div class="insight-box">
+                <h3>🤖 AI Engine Requirements</h3>
+                <p>To unlock the full power of AI analytics, ensure your dataset contains:</p>
+                <ul>
+                    <li><strong>Multiple Variables:</strong> At least 3-4 numeric variables for correlation analysis</li>
+                    <li><strong>PFAD Data:</strong> Primary commodity data for procurement insights</li>
+                    <li><strong>Sufficient Records:</strong> Minimum 20-30 data points for reliable AI predictions</li>
+                    <li><strong>Data Quality:</strong> Clean, consistent data with minimal missing values</li>
+                </ul>
+                </div>
+                """, unsafe_allow_html=True)actions'] if a['priority'] == 'High'])
                     if high_priority_count > 0:
                         summary_points.append(f"**{high_priority_count} high-priority actions** require immediate attention within the next 1-2 weeks")
                 
