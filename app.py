@@ -158,11 +158,7 @@ def create_enhanced_heatmap(correlation_matrix, height=500):
         text=correlation_matrix.round(3).values,
         texttemplate="%{text}",
         textfont={"size": 10},
-        hoverongaps=False,
-        colorbar=dict(
-            title="Correlation Coefficient",
-            titleside="right"
-        )
+        hoverongaps=False
     ))
     
     fig.update_layout(
@@ -702,11 +698,7 @@ if uploaded_file is not None:
                 colorscale='Reds_r',
                 text=sig_matrix.values,
                 texttemplate="%{text}",
-                textfont={"size": 10},
-                colorbar=dict(
-                    title="P-Value",
-                    titleside="right"
-                )
+                textfont={"size": 10}
             ))
             
             fig_sig.update_layout(
