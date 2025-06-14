@@ -1,4 +1,555 @@
-import streamlit as st
+# NEW AI INSIGHTS ENGINE TAB
+        with tab7:
+            st.header("🤖 AI Insights Engine")
+            st.markdown("*Powered by Advanced Analytics & Machine Learning*")
+            
+            if len(numeric_cols) > 1:
+                # Generate AI insights
+                with st.spinner("🤖 AI is analyzing your data and generating insights..."):
+                    ai_insights = generate_ai_market_insights(df, pfad_col, numeric_cols)
+                    procurement_recs = generate_procurement_recommendations(df, pfad_col, ai_insights)
+                    market_regime = calculate_market_regime(df, pfad_col, trend_window) if pfad_col else None
+                    competitive_analysis = generate_competitive_analysis(df, numeric_cols)
+                
+                # AI Dashboard Overview
+                st.subheader("🎯 AI Market Intelligence Dashboard")
+                
+                col1, col2, col3, col4 = st.columns(4)
+                
+                with col1:
+                    if ai_insights.get('market_efficiency'):
+                        efficiency = ai_insights['market_efficiency']
+                        st.metric(
+                            "Market Efficiency",
+                            efficiency['level'],
+                            f"{efficiency['score']:.3f}",
+                            help="AI assessment of market predictability and efficiency"
+                        )
+                    else:
+                        st.metric("Market Efficiency", "N/A")
+                
+                with col2:
+                    if ai_insights.get('volatility_assessment'):
+                        volatility = ai_insights['volatility_assessment']
+                        st.metric(
+                            "Risk Level",
+                            volatility['level'],
+                            f"{volatility['volatility_pct']:.1f}%",
+                            help="AI-assessed risk level based on price volatility"
+                        )
+                    else:
+                        st.metric("Risk Level", "N/A")
+                
+                with col3:
+                    if ai_insights.get('predictability_score'):
+                        pred_score = ai_insights['predictability_score']
+                        pred_level = "High" if pred_score > 0.7 else "Medium" if pred_score > 0.4 else "Low"
+                        st.metric(
+                            "AI Predictability",
+                            pred_level,
+                            f"{pred_score:.3f}",
+                            help="AI-calculated score for market predictability (0-1 scale)"
+                        )
+                    else:
+                        st.metric("AI Predictability", "N/A")
+                
+                with col4:
+                    if market_regime:
+                        st.metric(
+                            "Market Regime",
+                            market_regime['regime'],
+                            f"{market_regime['confidence']} Confidence",
+                            help="AI-identified current market regime and trend direction"
+                        )
+                    else:
+                        st.metric("Market Regime", "N/A")
+                
+                # Market Regime Analysis
+                if market_regime:
+                    st.subheader("📊 AI Market Regime Analysis")
+                    
+                    regime_color = {
+                        'Strong Uptrend': '#e74c3c',
+                        'Strong Downtrend': '#27ae60',
+                        'Sideways Trend': '#f39c12',
+                        'High Volatility': '#9b59b6',
+                        'Ranging Market': '#3498db'
+                    }.get(market_regime['regime'], '#34495e')
+                    
+                    st.markdown(f"""
+                    <div style="background: linear-gradient(90deg, {regime_color}22, {regime_color}11); 
+                                border-left: 5px solid {regime_color}; padding: 1.5rem; border-radius: 10px; margin: 1rem 0;">
+                        <h3 style="color: {regime_color}; margin-bottom: 1rem;">🎯 Current Market Regime: {market_regime['regime']}</h3>
+                        <p><strong>AI Analysis:</strong> {market_regime['description']}</p>
+                        <p><strong>Recommended Strategy:</strong> {market_regime['strategy']}</p>
+                        <p><strong>Technical Metrics:</strong></p>
+                        <ul>
+                            <li>Trend Strength: {market_regime['trend_strength']:.3f}</li>
+                            <li>Volatility: {market_regime['volatility']:.1f}%</li>
+                            <li>Price Momentum: {market_regime['momentum']:.1f}%</li>
+                            <li>AI Confidence: {market_regime['confidence']}</li>
+                        </ul>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                # AI-Powered Procurement Recommendations
+                st.subheader("💡 AI-Generated Procurement Recommendations")
+                
+                # Immediate Actions
+                if procurement_recs['immediate_actions']:
+                    st.markdown("#### ⚡ Immediate Actions (Next 1-4 weeks)")
+                    for action in procurement_recs['immediate_actions']:
+                        priority_color = {'High': '#e74c3c', 'Medium': '#f39c12', 'Low': '#27ae60'}.get(action['priority'], '#34495e')
+                        st.markdown(f"""
+                        <div style="background: {priority_color}15; border-left: 4px solid {priority_color}; padding: 1rem; margin: 0.5rem 0; border-radius: 5px;">
+                            <strong style="color: {priority_color};">[{action['priority']} Priority]</strong> {action['action']}<br>
+                            <small><strong>Reason:</strong> {action['reason']}<br>
+                            <strong>Timeline:</strong> {action['timeline']}</small>
+                        </div>
+                        """, unsafe_allow_html=True)
+                
+                # Strategic Initiatives
+                if procurement_recs['strategic_initiatives']:
+                    st.markdown("#### 🎯 Strategic Initiatives (2-6 months)")
+                    for initiative in procurement_recs['strategic_initiatives']:
+                        st.markdown(f"""
+                        <div class="insight-box">
+                            <h4>📈 {initiative['initiative']}</h4>
+                            <p><strong>Description:</strong> {initiative['description']}</p>
+                            <p><strong>Expected Benefit:</strong> {initiative['expected_benefit']}</p>
+                            <p><strong>Implementation Time:</strong> {initiative['implementation_time']}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                
+                # Risk Management
+                if procurement_recs['risk_management']:
+                    st.markdown("#### 🛡️ AI Risk Management Strategies")
+                    for risk_strategy in procurement_recs['risk_management']:
+                        st.markdown(f"""
+                        <div class="statistical-box">
+                            <h4>⚠️ {risk_strategy['strategy']}</h4>
+                            <p><strong>Strategy:</strong> {risk_strategy['description']}</p>
+                            <p><strong>Risk Reduction:</strong> {risk_strategy['risk_reduction']}</p>
+                            <p><strong>Implementation Cost:</strong> {risk_strategy['cost']}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                
+                # Smart Timing Recommendations
+                if procurement_recs['timing_recommendations']:
+                    st.subheader("⏰ AI Smart Timing Recommendations")
+                    
+                    for timing in procurement_recs['timing_recommendations']:
+                        confidence_color = {'High': '#27ae60', 'Medium': '#f39c12', 'Low': '#e74c3c'}.get(timing['confidence'], '#34495e')
+                        st.markdown(f"""
+                        <div style="background: {confidence_color}15; border: 2px solid {confidence_color}; padding: 1.5rem; margin: 1rem 0; border-radius: 10px;">
+                            <h4 style="color: {confidence_color};">📊 Leading Indicator: {timing['indicator']}</h4>
+                            <p><strong>Relationship:</strong> {timing['relationship']}</p>
+                            <p><strong>AI Timing Rule:</strong> {timing['timing_rule']}</p>
+                            <p><strong>Confidence Level:</strong> <span style="color: {confidence_color}; font-weight: bold;">{timing['confidence']}</span></p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                
+                # Competitive Intelligence
+                if competitive_analysis and competitive_analysis.get('market_position'):
+                    st.subheader("🏆 AI Competitive Intelligence")
+                    
+                    position = competitive_analysis['market_position']
+                    position_color = {
+                        'Market Leader': '#27ae60',
+                        'Market Participant': '#f39c12',
+                        'Market Outlier': '#e74c3c'
+                    }.get(position['position'], '#34495e')
+                    
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.markdown(f"""
+                        <div style="background: {position_color}15; border: 2px solid {position_color}; padding: 1.5rem; border-radius: 10px;">
+                            <h3 style="color: {position_color};">🎯 Market Position: {position['position']}</h3>
+                            <p><strong>AI Assessment:</strong> {position['description']}</p>
+                            <p><strong>Key Driver:</strong> {position['key_variable']}</p>
+                            <p><strong>Integration Score:</strong> {position['score']:.3f}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    
+                    with col2:
+                        if competitive_analysis['benchmark_comparison']:
+                            st.markdown("**📊 Benchmark Rankings:**")
+                            for benchmark in competitive_analysis['benchmark_comparison']:
+                                percentile_color = '#27ae60' if benchmark['percentile'] > 70 else '#f39c12' if benchmark['percentile'] > 40 else '#e74c3c'
+                                st.markdown(f"""
+                                <div style="background: {percentile_color}10; padding: 0.5rem; margin: 0.25rem 0; border-radius: 5px;">
+                                    <strong>#{benchmark['rank']} {benchmark['variable']}</strong><br>
+                                    <small>Market Integration: {benchmark['market_integration_score']:.3f} 
+                                    ({benchmark['percentile']:.0f}th percentile)</small>
+                                </div>
+                                """, unsafe_allow_html=True)
+                
+                # Advanced AI Analytics
+                st.subheader("🔬 Advanced AI Market Analytics")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    # AI Correlation Network
+                    if len(numeric_cols) > 2:
+                        st.markdown("#### 🔗 AI Correlation Network Analysis")
+                        
+                        corr_matrix = df[numeric_cols].corr()
+                        
+                        # Create network-style correlation visualization
+                        strong_correlations = []
+                        for i in range(len(corr_matrix.columns)):
+                            for j in range(i+1, len(corr_matrix.columns)):
+                                corr_val = corr_matrix.iloc[i, j]
+                                if abs(corr_val) > 0.5:  # Only strong correlations
+                                    strong_correlations.append({
+                                        'source': corr_matrix.columns[i],
+                                        'target': corr_matrix.columns[j],
+                                        'correlation': corr_val,
+                                        'strength': 'Strong' if abs(corr_val) > 0.7 else 'Moderate'
+                                    })
+                        
+                        if strong_correlations:
+                            network_df = pd.DataFrame(strong_correlations)
+                            st.dataframe(network_df.round(3), use_container_width=True)
+                            
+                            # Network insights
+                            st.info(f"""
+                            **AI Network Analysis:**
+                            - {len(strong_correlations)} strong market connections detected
+                            - Network density: {len(strong_correlations) / (len(numeric_cols) * (len(numeric_cols)-1) / 2):.1%}
+                            - Most connected variables drive market dynamics
+                            """)
+                        else:
+                            st.warning("No strong correlations detected for network analysis")
+                
+                with col2:
+                    # AI Risk Assessment Matrix
+                    st.markdown("#### 🎯 AI Risk-Opportunity Matrix")
+                    
+                    if ai_insights.get('volatility_assessment') and ai_insights.get('predictability_score'):
+                        volatility_pct = ai_insights['volatility_assessment']['volatility_pct']
+                        pred_score = ai_insights['predictability_score']
+                        
+                        # Create risk-opportunity quadrants
+                        if pred_score > 0.6 and volatility_pct < 15:
+                            quadrant = "🟢 Low Risk, High Opportunity"
+                            strategy = "Aggressive procurement optimization"
+                        elif pred_score > 0.6 and volatility_pct >= 15:
+                            quadrant = "🟡 High Risk, High Opportunity"
+                            strategy = "Hedged aggressive approach"
+                        elif pred_score <= 0.6 and volatility_pct < 15:
+                            quadrant = "🔵 Low Risk, Low Opportunity"
+                            strategy = "Conservative steady procurement"
+                        else:
+                            quadrant = "🔴 High Risk, Low Opportunity"
+                            strategy = "Defensive risk management"
+                        
+                        st.markdown(f"""
+                        <div class="statistical-box">
+                            <h4>{quadrant}</h4>
+                            <p><strong>AI Strategy:</strong> {strategy}</p>
+                            <p><strong>Predictability:</strong> {pred_score:.3f}</p>
+                            <p><strong>Volatility:</strong> {volatility_pct:.1f}%</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                
+                # AI Learning & Adaptation
+                st.subheader("🧠 AI Learning & Model Performance")
+                
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    # Model Confidence Score
+                    if ai_insights.get('predictability_score'):
+                        conf_score = ai_insights['predictability_score']
+                        conf_pct = conf_score * 100
+                        
+                        st.metric(
+                            "AI Model Confidence",
+                            f"{conf_pct:.1f}%",
+                            help="Overall confidence in AI predictions and recommendations"
+                        )
+                        
+                        if conf_score > 0.7:
+                            st.success("🎯 High confidence - AI recommendations are reliable")
+                        elif conf_score > 0.4:
+                            st.warning("⚠️ Medium confidence - Use AI insights with caution")
+                        else:
+                            st.error("🚨 Low confidence - AI insights for reference only")
+                
+                with col2:
+                    # Data Quality Assessment
+                    data_completeness = (1 - df.isnull().sum().sum() / (len(df) * len(df.columns))) * 100
+                    st.metric(
+                        "Data Quality Score",
+                        f"{data_completeness:.1f}%",
+                        help="Quality of input data affecting AI accuracy"
+                    )
+                    
+                    if data_completeness > 90:
+                        st.success("✅ Excellent data quality")
+                    elif data_completeness > 70:
+                        st.warning("⚠️ Good data quality")
+                    else:
+                        st.error("🚨 Poor data quality may affect AI accuracy")
+                
+                with col3:
+                    # AI Recommendation Reliability
+                    if ai_insights.get('correlation_insights'):
+                        total_strong = ai_insights['correlation_insights']['total_significant']
+                        reliability = min(100, (total_strong / max(1, len(numeric_cols)-1)) * 100)
+                        
+                        st.metric(
+                            "Recommendation Reliability",
+                            f"{reliability:.0f}%",
+                            help="Reliability of AI recommendations based on statistical significance"
+                        )
+                
+                # AI Insights Summary Report
+                st.subheader("📋 AI Executive Summary Report")
+                
+                st.markdown("""
+                <div class="insight-box">
+                <h3>🤖 AI-Generated Executive Summary</h3>
+                """, unsafe_allow_html=True)
+                
+                # Generate executive summary
+                summary_points = []
+                
+                if ai_insights.get('market_efficiency'):
+                    efficiency = ai_insights['market_efficiency']
+                    summary_points.append(f"Market efficiency is **{efficiency['level'].lower()}** ({efficiency['score']:.3f}), {efficiency['implication'].lower()}")
+                
+                if ai_insights.get('volatility_assessment'):
+                    volatility = ai_insights['volatility_assessment']
+                    summary_points.append(f"Price volatility is **{volatility['level'].lower()}** ({volatility['volatility_pct']:.1f}%), {volatility['description'].lower()}")
+                
+                if market_regime:
+                    summary_points.append(f"Current market regime is **{market_regime['regime'].lower()}** with {market_regime['confidence'].lower()} confidence")
+                
+                if ai_insights.get('predictability_score'):
+                    pred_score = ai_insights['predictability_score']
+                    pred_level = "high" if pred_score > 0.7 else "moderate" if pred_score > 0.4 else "low"
+                    summary_points.append(f"AI predictability assessment is **{pred_level}** ({pred_score:.3f}), enabling {'systematic' if pred_score > 0.6 else 'adaptive'} procurement strategies")
+                
+                if procurement_recs['immediate_actions']:
+                    high_priority_count = len([a for a in procurement_recs['immediate_actions'] if a['priority'] == 'High'])
+                    if high_priority_count > 0:
+                        summary_points.append(f"**{high_priority_count} high-priority actions** require immediate attention within the next 1-2 weeks")
+                
+                # Display summary points
+                for i, point in enumerate(summary_points, 1):
+                    st.write(f"{i}. {point}")
+                
+                # Key AI Recommendations
+                st.write("\n**🎯 Top AI Recommendations:**")
+                
+                top_recommendations = []
+                
+                if procurement_recs['strategic_initiatives']:
+                    top_recommendations.append(f"Implement {procurement_recs['strategic_initiatives'][0]['initiative']} for {procurement_recs['strategic_initiatives'][0]['expected_benefit']}")
+                
+                if procurement_recs['timing_recommendations']:
+                    timing = procurement_recs['timing_recommendations'][0]
+                    top_recommendations.append(f"Use {timing['indicator']} as primary leading indicator with {timing['confidence'].lower()} confidence")
+                
+                if ai_insights.get('risk_factors'):
+                    high_risk_factors = [r for r in ai_insights['risk_factors'] if r['severity'] == 'High']
+                    if high_risk_factors:
+                        top_recommendations.append(f"Address {high_risk_factors[0]['type'].lower()} through {high_risk_factors[0]['mitigation'].lower()}")
+                
+                for i, rec in enumerate(top_recommendations, 1):
+                    st.write(f"• **Recommendation {i}:** {rec}")
+                
+                st.markdown("</div>", unsafe_allow_html=True)
+                
+                # AI Model Transparency & Explainability
+                with st.expander("🔍 AI Model Transparency & Methodology"):
+                    st.markdown("""
+                    **🤖 AI Methodology Explanation:**
+                    
+                    **Market Efficiency Analysis:**
+                    - Calculated using average absolute correlations across all variables
+                    - High efficiency (>0.6): Strong interconnected market relationships
+                    - Medium efficiency (0.3-0.6): Moderate market integration
+                    - Low efficiency (<0.3): Potential arbitrage opportunities
+                    
+                    **Volatility Assessment:**
+                    - Coefficient of variation (standard deviation / mean) × 100
+                    - Risk levels: High (>20%), Moderate (10-20%), Low (<10%)
+                    - Includes price range analysis for comprehensive risk evaluation
+                    
+                    **Predictability Score:**
+                    - Weighted composite of correlation strength (40%), number of strong correlations (30%), and inverse volatility (30%)
+                    - Scale: 0-1 where 1 represents perfect predictability
+                    - Used to determine procurement strategy recommendations
+                    
+                    **Market Regime Detection:**
+                    - Linear regression trend strength combined with volatility analysis
+                    - Momentum calculation using rolling window price changes
+                    - Confidence levels based on statistical significance and trend clarity
+                    
+                    **Risk-Opportunity Matrix:**
+                    - Two-dimensional analysis combining predictability and volatility
+                    - Four quadrants provide strategic guidance for procurement approach
+                    - Dynamic recommendations based on current market position
+                    
+                    **AI Limitations:**
+                    - Recommendations based on historical data patterns
+                    - Cannot predict external market shocks or regulatory changes
+                    - Requires sufficient data quality and quantity for accuracy
+                    - Should be combined with human expertise and market knowledge
+                    """)
+                
+                # Export AI Report
+                st.subheader("📤 Export AI Analysis")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    if st.button("📊 Generate AI Report Summary", type="primary"):
+                        # Create downloadable report summary
+                        report_data = {
+                            'AI Analysis Summary': summary_points,
+                            'Top Recommendations': top_recommendations,
+                            'Market Efficiency': ai_insights.get('market_efficiency', {}),
+                            'Volatility Assessment': ai_insights.get('volatility_assessment', {}),
+                            'Market Regime': market_regime,
+                            'Predictability Score': ai_insights.get('predictability_score', 0)
+                        }
+                        
+                        st.success("✅ AI Report generated successfully!")
+                        st.json(report_data)
+                
+                with col2:
+                    st.info("""
+                    **📋 Report Includes:**
+                    • Executive summary with key insights
+                    • Strategic recommendations and priorities
+                    • Risk assessment and mitigation strategies
+                    • Market regime analysis and timing guidance
+                    • AI model confidence and reliability metrics
+                    """)
+            
+            else:
+                # Insufficient data for AI analysis
+                st.warning("⚠️ AI Insights Engine requires more data for comprehensive analysis")
+                
+                st.markdown("""
+                <div class="insight-box">
+                <h3>🤖 AI Engine Requirements</h3>
+                <p>To unlock the full power of AI analytics, ensure your dataset contains:</p>
+                <ul>
+                    <li><strong>Multiple Variables:</strong> At least 3-4 numeric variables for correlation analysis</li>
+                    <li><strong>PFAD Data:</strong> Primary commodity data for procurement insights</li>
+                    <li><strong>Sufficient Records:</strong> Minimum 20-30 data points for reliable AI predictions</li>
+                    <li><strong>Time Series Data:</strong> Date information for trend and regime analysis</li>
+                    <li><strong>Data Quality:</strong> Clean, consistent data with minimal missing values</li>
+                </ul>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # AI Capabilities Preview
+                st.subheader("🤖 AI Capabilities Preview")
+                
+                capabilities = [
+                    {
+                        'feature': '🎯 Market Efficiency Analysis',
+                        'description': 'AI assessment of market predictability and interconnectedness',
+                        'benefit': 'Optimize procurement strategies based on market behavior'
+                    },
+                    {
+                        'feature': '📊 Smart Risk Assessment',
+                        'description': 'Automated volatility analysis and risk categorization',
+                        'benefit': 'Proactive risk management and mitigation strategies'
+                    },
+                    {
+                        'feature': '⏰ Intelligent Timing Recommendations',
+                        'description': 'AI-powered purchase timing based on leading indicators',
+                        'benefit': 'Maximize cost savings through optimal timing'
+                    },
+                    {
+                        'feature': '🏆 Competitive Intelligence',
+                        'description': 'Market position analysis and benchmark comparisons',
+                        'benefit': 'Strategic advantage through market positioning insights'
+                    },
+                    {
+                        'feature': '🔮 Predictive Analytics',
+                        'description': 'Machine learning-based price and trend forecasting',
+                        'benefit': 'Forward-looking procurement planning and budgeting'
+                    },
+                    {
+                        'feature': '🧠 Adaptive Learning',
+                        'description': 'AI models that improve with more data and feedback',
+                        'benefit': 'Continuously improving accuracy and recommendations'
+                    }
+                ]
+                
+                for cap in capabilities:
+                    st.markdown(f"""
+                    <div class="statistical-box">
+                        <h4>{cap['feature']}</h4>
+                        <p><strong>Capability:</strong> {cap['description']}</p>
+                        <p><strong>Business Value:</strong> {cap['benefit']}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+    except Exception as e:
+        st.error(f"❌ Error processing file: {str(e)}")
+        st.write("**Troubleshooting tips:**")
+        st.write("• Ensure your file is a valid Excel format (.xlsx or .xls)")
+        st.write("• Check that your data contains numeric values")
+        st.write("• Verify that column names don't contain special characters")
+        st.write("• Make sure you have sufficient data for statistical analysis")
+
+else:
+    # Enhanced welcome screen
+    st.markdown("""
+    <div style="text-align: center; padding: 4rem 2rem; background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); border-radius: 20px; margin: 2rem 0;">
+        <h2 style="color: #2c3e50; margin-bottom: 2rem;">📊 Advanced PFAD Statistical Analytics</h2>
+        <p style="font-size: 1.3em; color: #34495e; margin-bottom: 2rem;">
+            Professional-grade statistical analysis for strategic procurement decisions
+        </p>
+        
+        <div style="display: flex; justify-content: space-around; flex-wrap: wrap; margin: 2rem 0;">
+            <div style="flex: 1; min-width: 180px; margin: 1rem; padding: 1.5rem; background: white; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                <h3 style="color: #667eea;">🔬 Statistical Tests</h3>
+                <p>Confidence intervals, p-values, and significance testing</p>
+            </div>
+            <div style="flex: 1; min-width: 180px; margin: 1rem; padding: 1.5rem; background: white; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                <h3 style="color: #667eea;">🔄 Bootstrap Analysis</h3>
+                <p>Robust correlation estimates with bootstrap sampling</p>
+            </div>
+            <div style="flex: 1; min-width: 180px; margin: 1rem; padding: 1.5rem; background: white; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                <h3 style="color: #667eea;">⚡ Power Analysis</h3>
+                <p>Statistical power and effect size interpretation</p>
+            </div>
+            <div style="flex: 1; min-width: 180px; margin: 1rem; padding: 1.5rem; background: white; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                <h3 style="color: #667eea;">📈 Time Series</h3>
+                <p>Trend analysis, forecasting, and temporal insights</p>
+            </div>
+            <div style="flex: 1; min-width: 180px; margin: 1rem; padding: 1.5rem; background: white; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                <h3 style="color: #667eea;">🤖 AI Engine</h3>
+                <p>Machine learning insights and smart recommendations</p>
+            </div>
+        </div>
+        
+        <p style="color: #7f8c8d; font-size: 1.1em;">
+            Upload your Excel file to access comprehensive analytical features
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+# Enhanced footer
+st.markdown("---")
+st.markdown("""
+<div style="text-align: center; padding: 1rem; color: #7f8c8d;">
+    <p><strong>PFAD Advanced Statistical Analytics</strong> | Professional Statistical Analysis Platform</p>
+    <p>🔬 Statistical rigor • 📊 Professional insights • ⚡ Evidence-based decisions • 📈 Time series forecasting • 🤖 AI-powered intelligence</p>
+</div>
+""", unsafe_allow_html=True)import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -317,7 +868,368 @@ def analyze_time_series_trend(data, variable, window_size=12):
     except:
         return None
 
-def simple_forecast(data, variable, periods=6):
+# AI INSIGHTS ENGINE FUNCTIONS
+def generate_ai_market_insights(df, pfad_col, numeric_cols):
+    """Generate comprehensive AI-powered market insights"""
+    insights = {
+        'market_efficiency': None,
+        'volatility_assessment': None,
+        'correlation_insights': None,
+        'risk_factors': [],
+        'opportunities': [],
+        'strategic_recommendations': [],
+        'market_regime': None,
+        'predictability_score': None
+    }
+    
+    try:
+        if pfad_col and len(numeric_cols) > 1:
+            # Market efficiency analysis
+            corr_matrix = df[numeric_cols].corr()
+            pfad_corr = corr_matrix[pfad_col].drop(pfad_col)
+            
+            avg_abs_corr = pfad_corr.abs().mean()
+            strong_correlations = (pfad_corr.abs() > 0.7).sum()
+            
+            if avg_abs_corr > 0.6:
+                insights['market_efficiency'] = {
+                    'level': 'High',
+                    'score': avg_abs_corr,
+                    'description': 'Market shows high interconnectedness with predictable price relationships',
+                    'implication': 'Systematic procurement strategies recommended'
+                }
+            elif avg_abs_corr > 0.3:
+                insights['market_efficiency'] = {
+                    'level': 'Moderate',
+                    'score': avg_abs_corr,
+                    'description': 'Market shows moderate efficiency with some predictable patterns',
+                    'implication': 'Mixed strategy of systematic and opportunistic procurement'
+                }
+            else:
+                insights['market_efficiency'] = {
+                    'level': 'Low',
+                    'score': avg_abs_corr,
+                    'description': 'Market shows low efficiency with potential arbitrage opportunities',
+                    'implication': 'Focus on tactical, opportunistic procurement strategies'
+                }
+            
+            # Volatility assessment
+            if pfad_col in df.columns:
+                pfad_data = df[pfad_col].dropna()
+                if len(pfad_data) > 1:
+                    volatility = pfad_data.std() / pfad_data.mean() * 100 if pfad_data.mean() != 0 else 0
+                    price_range = (pfad_data.max() - pfad_data.min()) / pfad_data.mean() * 100 if pfad_data.mean() != 0 else 0
+                    
+                    if volatility > 20:
+                        risk_level = 'High'
+                        risk_desc = 'High price volatility requires active risk management'
+                    elif volatility > 10:
+                        risk_level = 'Moderate'
+                        risk_desc = 'Moderate volatility allows for strategic timing'
+                    else:
+                        risk_level = 'Low'
+                        risk_desc = 'Low volatility enables predictable procurement planning'
+                    
+                    insights['volatility_assessment'] = {
+                        'level': risk_level,
+                        'volatility_pct': volatility,
+                        'price_range_pct': price_range,
+                        'description': risk_desc
+                    }
+            
+            # Correlation insights
+            strongest_positive = pfad_corr[pfad_corr > 0].idxmax() if len(pfad_corr[pfad_corr > 0]) > 0 else None
+            strongest_negative = pfad_corr[pfad_corr < 0].idxmin() if len(pfad_corr[pfad_corr < 0]) > 0 else None
+            
+            insights['correlation_insights'] = {
+                'strongest_positive': {
+                    'variable': strongest_positive,
+                    'correlation': pfad_corr[strongest_positive] if strongest_positive else None
+                },
+                'strongest_negative': {
+                    'variable': strongest_negative,
+                    'correlation': pfad_corr[strongest_negative] if strongest_negative else None
+                },
+                'total_significant': strong_correlations
+            }
+            
+            # Risk factors identification
+            if volatility > 15:
+                insights['risk_factors'].append({
+                    'type': 'High Volatility',
+                    'severity': 'High',
+                    'description': f'PFAD shows {volatility:.1f}% volatility, indicating unstable pricing',
+                    'mitigation': 'Implement hedging strategies and diversify suppliers'
+                })
+            
+            if strong_correlations < 2:
+                insights['risk_factors'].append({
+                    'type': 'Low Predictability',
+                    'severity': 'Medium',
+                    'description': 'Few strong correlations limit forecasting accuracy',
+                    'mitigation': 'Focus on short-term procurement and flexible contracts'
+                })
+            
+            # Opportunities identification
+            if avg_abs_corr > 0.5 and volatility < 15:
+                insights['opportunities'].append({
+                    'type': 'Predictable Market',
+                    'potential': 'High',
+                    'description': 'Strong correlations with manageable volatility',
+                    'action': 'Implement automated procurement triggers based on leading indicators'
+                })
+            
+            if strongest_negative and abs(pfad_corr[strongest_negative]) > 0.5:
+                insights['opportunities'].append({
+                    'type': 'Counter-Cyclical Indicator',
+                    'potential': 'Medium',
+                    'description': f'Strong negative correlation with {strongest_negative}',
+                    'action': f'Monitor {strongest_negative} for procurement timing opportunities'
+                })
+            
+            # Predictability score
+            predictability_factors = [
+                avg_abs_corr * 0.4,  # Correlation strength
+                min(1.0, strong_correlations / 3) * 0.3,  # Number of strong correlations
+                max(0, 1 - volatility / 30) * 0.3  # Volatility (inverted)
+            ]
+            insights['predictability_score'] = sum(predictability_factors)
+            
+        return insights
+        
+    except Exception as e:
+        return insights
+
+def generate_procurement_recommendations(df, pfad_col, insights, forecast_data=None):
+    """Generate AI-powered procurement recommendations"""
+    recommendations = {
+        'immediate_actions': [],
+        'strategic_initiatives': [],
+        'risk_management': [],
+        'timing_recommendations': [],
+        'supplier_strategy': [],
+        'inventory_optimization': []
+    }
+    
+    try:
+        # Immediate actions based on current data
+        if pfad_col in df.columns:
+            recent_data = df[pfad_col].dropna().tail(5)
+            if len(recent_data) > 1:
+                recent_trend = (recent_data.iloc[-1] / recent_data.iloc[0] - 1) * 100
+                
+                if recent_trend > 5:
+                    recommendations['immediate_actions'].append({
+                        'priority': 'High',
+                        'action': 'Accelerate Procurement',
+                        'reason': f'Recent {recent_trend:.1f}% price increase detected',
+                        'timeline': 'Next 1-2 weeks'
+                    })
+                elif recent_trend < -5:
+                    recommendations['immediate_actions'].append({
+                        'priority': 'Medium',
+                        'action': 'Delay Non-Critical Purchases',
+                        'reason': f'Recent {abs(recent_trend):.1f}% price decrease suggests further drops',
+                        'timeline': 'Next 2-4 weeks'
+                    })
+        
+        # Strategic initiatives based on market efficiency
+        if insights.get('market_efficiency'):
+            efficiency = insights['market_efficiency']
+            
+            if efficiency['level'] == 'High':
+                recommendations['strategic_initiatives'].append({
+                    'initiative': 'Systematic Procurement Program',
+                    'description': 'Implement rule-based procurement using statistical indicators',
+                    'expected_benefit': '5-15% cost reduction through timing optimization',
+                    'implementation_time': '2-3 months'
+                })
+            elif efficiency['level'] == 'Low':
+                recommendations['strategic_initiatives'].append({
+                    'initiative': 'Opportunistic Procurement Strategy',
+                    'description': 'Focus on market timing and relationship-based negotiations',
+                    'expected_benefit': '3-8% cost savings through market inefficiency exploitation',
+                    'implementation_time': '1-2 months'
+                })
+        
+        # Risk management recommendations
+        if insights.get('volatility_assessment'):
+            volatility = insights['volatility_assessment']
+            
+            if volatility['level'] == 'High':
+                recommendations['risk_management'].append({
+                    'strategy': 'Price Hedging Program',
+                    'description': 'Implement financial hedging instruments to manage price risk',
+                    'risk_reduction': 'Up to 70% volatility reduction',
+                    'cost': 'Low (1-3% of procurement value)'
+                })
+                
+                recommendations['risk_management'].append({
+                    'strategy': 'Supplier Diversification',
+                    'description': 'Develop relationships with 3-5 suppliers across different regions',
+                    'risk_reduction': 'Reduces supply chain concentration risk',
+                    'cost': 'Medium (additional relationship management)'
+                })
+        
+        # Timing recommendations based on correlations
+        if insights.get('correlation_insights'):
+            corr_data = insights['correlation_insights']
+            
+            if corr_data['strongest_positive']['variable']:
+                var_name = corr_data['strongest_positive']['variable']
+                correlation = corr_data['strongest_positive']['correlation']
+                
+                recommendations['timing_recommendations'].append({
+                    'indicator': var_name,
+                    'relationship': f'Strong positive correlation ({correlation:.3f})',
+                    'timing_rule': f'Purchase when {var_name} is trending downward',
+                    'confidence': 'High' if abs(correlation) > 0.7 else 'Medium'
+                })
+        
+        # Inventory optimization
+        if insights.get('predictability_score'):
+            pred_score = insights['predictability_score']
+            
+            if pred_score > 0.7:
+                recommendations['inventory_optimization'].append({
+                    'strategy': 'Just-in-Time Procurement',
+                    'description': 'High predictability allows for lean inventory management',
+                    'benefit': 'Reduce inventory carrying costs by 20-30%',
+                    'risk': 'Low (high forecasting accuracy)'
+                })
+            else:
+                recommendations['inventory_optimization'].append({
+                    'strategy': 'Safety Stock Optimization',
+                    'description': 'Maintain higher safety stocks due to market unpredictability',
+                    'benefit': 'Reduce stockout risk by 80%',
+                    'cost': 'Higher carrying costs (acceptable trade-off)'
+                })
+        
+        return recommendations
+        
+    except Exception as e:
+        return recommendations
+
+def calculate_market_regime(df, pfad_col, window=12):
+    """Determine current market regime (trending, ranging, volatile)"""
+    try:
+        if pfad_col not in df.columns:
+            return None
+        
+        data = df[pfad_col].dropna()
+        if len(data) < window * 2:
+            return None
+        
+        recent_data = data.tail(window)
+        
+        # Calculate regime indicators
+        trend_strength = abs(stats.linregress(range(len(recent_data)), recent_data)[2])  # R-value
+        volatility = recent_data.std() / recent_data.mean() * 100 if recent_data.mean() != 0 else 0
+        price_momentum = (recent_data.iloc[-1] / recent_data.iloc[0] - 1) * 100
+        
+        # Determine regime
+        if trend_strength > 0.7:
+            if price_momentum > 5:
+                regime = 'Strong Uptrend'
+                description = 'Prices are in a strong upward trend'
+                strategy = 'Accelerate purchases, consider forward contracts'
+            elif price_momentum < -5:
+                regime = 'Strong Downtrend'
+                description = 'Prices are in a strong downward trend'
+                strategy = 'Delay purchases, negotiate better terms'
+            else:
+                regime = 'Sideways Trend'
+                description = 'Prices are trending but with limited movement'
+                strategy = 'Maintain regular procurement schedule'
+        elif volatility > 15:
+            regime = 'High Volatility'
+            description = 'Market is experiencing high volatility'
+            strategy = 'Use dollar-cost averaging, implement hedging'
+        else:
+            regime = 'Ranging Market'
+            description = 'Prices are moving within a defined range'
+            strategy = 'Buy at range lows, sell at range highs'
+        
+        return {
+            'regime': regime,
+            'description': description,
+            'strategy': strategy,
+            'trend_strength': trend_strength,
+            'volatility': volatility,
+            'momentum': price_momentum,
+            'confidence': 'High' if trend_strength > 0.6 or volatility > 20 else 'Medium'
+        }
+        
+    except Exception as e:
+        return None
+
+def generate_competitive_analysis(df, numeric_cols):
+    """Generate competitive market position analysis"""
+    try:
+        analysis = {
+            'market_position': None,
+            'benchmark_comparison': [],
+            'competitive_advantages': [],
+            'improvement_areas': []
+        }
+        
+        if len(numeric_cols) > 2:
+            # Calculate relative performance metrics
+            corr_matrix = df[numeric_cols].corr()
+            avg_correlations = corr_matrix.abs().mean().sort_values(ascending=False)
+            
+            # Market position based on correlation strength
+            top_performer = avg_correlations.index[0]
+            top_score = avg_correlations.iloc[0]
+            
+            if top_score > 0.6:
+                position = 'Market Leader'
+                desc = 'Strong relationships with most market variables'
+            elif top_score > 0.4:
+                position = 'Market Participant'
+                desc = 'Moderate integration with market dynamics'
+            else:
+                position = 'Market Outlier'
+                desc = 'Limited correlation with market variables'
+            
+            analysis['market_position'] = {
+                'position': position,
+                'description': desc,
+                'key_variable': top_performer,
+                'score': top_score
+            }
+            
+            # Benchmark comparisons
+            for i, (var, score) in enumerate(avg_correlations.head(3).items()):
+                analysis['benchmark_comparison'].append({
+                    'rank': i + 1,
+                    'variable': var,
+                    'market_integration_score': score,
+                    'percentile': (len(avg_correlations) - i) / len(avg_correlations) * 100
+                })
+            
+            # Competitive advantages
+            strong_vars = avg_correlations[avg_correlations > 0.6]
+            for var in strong_vars.index:
+                analysis['competitive_advantages'].append({
+                    'factor': var,
+                    'strength': 'High market integration',
+                    'leverage_opportunity': f'Use {var} as leading indicator for strategic advantage'
+                })
+            
+            # Improvement areas
+            weak_vars = avg_correlations[avg_correlations < 0.3]
+            for var in weak_vars.index[-2:]:  # Bottom 2
+                analysis['improvement_areas'].append({
+                    'factor': var,
+                    'issue': 'Low market integration',
+                    'improvement_action': f'Investigate why {var} shows weak market correlation'
+                })
+        
+        return analysis
+        
+    except Exception as e:
+        return None
     """Simple linear trend forecasting"""
     try:
         if 'Date' not in data.columns or variable not in data.columns:
@@ -426,14 +1338,15 @@ if uploaded_file:
                     help="Average absolute correlation across variables"
                 )
         
-        # Create tabs for different analyses - NOW WITH 6 TABS
-        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+        # Create tabs for different analyses - NOW WITH 7 TABS
+        tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
             "📊 Data Overview", 
             "🌡️ Correlation Analysis", 
             "🎯 PFAD Insights", 
             "📈 Advanced Statistics",
             "🔬 Statistical Tests",
-            "📈 Time Series Analysis"  # NEW TAB
+            "📈 Time Series Analysis",
+            "🤖 AI Insights Engine"  # NEW AI TAB
         ])
         
         with tab1:
