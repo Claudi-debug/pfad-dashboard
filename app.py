@@ -1,1107 +1,1273 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import numpy as np
+import plotly.graph_objects as go
+import plotly.express as px
+from plotly.subplots import make_subplots
 from scipy import stats
+from scipy.stats import jarque_bera, anderson, normaltest
+from scipy.signal import find_peaks
 import warnings
 warnings.filterwarnings('ignore')
 
+# Advanced statistical functions
+def calculate_rolling_correlation(df, col1, col2, window=30):
+    """Calculate rolling correlation between two columns"""
+    return df[col1].rolling(window=window).corr(df[col2])
+
+def calculate_granger_causality(data1, data2, max_lag=5):
+    """Simplified Granger causality test"""
+    from statsmodels.tsa.stattools import grangercausalitytests
+    try:
+        df_test = pd.DataFrame({'x': data1, 'y': data2})
+        result = grangercausalitytests(df_test[['x', 'y']], max_lag, verbose=False)
+        p_values = [result[i+1][0]['ssr_ftest'][1] for i in range(max_lag)]
+        return min(p_values)
+    except:
+        return None
+
+def calculate_var(returns, confidence_level=0.95):
+    """Calculate Value at Risk"""
+    return np.percentile(returns, (1 - confidence_level) * 100)
+
+def calculate_cvar(returns, confidence_level=0.95):
+    """Calculate Conditional Value at Risk"""
+    var = calculate_var(returns, confidence_level)
+    return returns[returns <= var].mean()
+
+def detect_outliers_isolation_forest(data):
+    """Detect outliers using Isolation Forest"""
+    from sklearn.ensemble import IsolationForest
+    iso = IsolationForest(contamination=0.1, random_state=42)
+    outliers = iso.fit_predict(data.reshape(-1, 1))
+    return outliers == -1
+
+def calculate_hurst_exponent(ts):
+    """Calculate Hurst exponent for trend persistence"""
+    lags = range(2, 100)
+    tau = [np.sqrt(np.std(np.subtract(ts[lag:], ts[:-lag]))) for lag in lags]
+    poly = np.polyfit(np.log(lags), np.log(tau), 1)
+    return poly[0] * 2
+
+def perform_cointegration_test(series1, series2):
+    """Test for cointegration between two series"""
+    from statsmodels.tsa.stattools import coint
+    score, p_value, _ = coint(series1, series2)
+    return p_value
+
 # Page configuration
 st.set_page_config(
-    page_title="PFAD Procurement Analytics",
+    page_title="PFAD Advanced Analytics Platform",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for better styling
+# Custom CSS for advanced UI
 st.markdown("""
 <style>
-    .main-header {
-        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+    /* Main container styling */
+    .main {
+        padding: 0rem 1rem;
+    }
+    
+    /* Header styling */
+    .dashboard-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         padding: 2rem;
         border-radius: 15px;
-        text-align: center;
         color: white;
         margin-bottom: 2rem;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        box-shadow: 0 10px 30px rgba(0,0,0,0.1);
     }
+    
+    /* Metric cards */
     .metric-card {
-        background: linear-gradient(145deg, #f8f9fa, #e9ecef);
+        background: white;
         padding: 1.5rem;
-        border-radius: 12px;
-        border-left: 4px solid #667eea;
-        margin: 0.5rem 0;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    }
-    .insight-box {
-        background: linear-gradient(145deg, #e8f4fd, #d4edda);
-        padding: 2rem;
-        border-radius: 15px;
-        border: 2px solid #bee5eb;
-        margin: 1rem 0;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    }
-    .statistical-box {
-        background: linear-gradient(145deg, #fff3cd, #f8d7da);
-        padding: 1.5rem;
-        border-radius: 12px;
-        border: 2px solid #ffeaa7;
-        margin: 1rem 0;
-        box-shadow: 0 3px 5px rgba(0, 0, 0, 0.1);
-    }
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 8px;
-    }
-    .stTabs [data-baseweb="tab"] {
-        height: 50px;
-        background-color: #f0f2f6;
         border-radius: 10px;
-        padding: 10px 20px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        transition: transform 0.3s ease;
+        height: 100%;
+    }
+    
+    .metric-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 15px rgba(0,0,0,0.2);
+    }
+    
+    /* Insight cards */
+    .insight-card {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        padding: 1.5rem;
+        border-radius: 10px;
+        color: white;
+        margin: 1rem 0;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+    
+    /* Statistical test results */
+    .stat-result {
+        background: #f8f9fa;
+        padding: 1rem;
+        border-radius: 8px;
+        margin: 0.5rem 0;
+        border-left: 4px solid #667eea;
+    }
+    
+    /* Warning boxes */
+    .warning-box {
+        background: #fff3cd;
+        border-left: 4px solid #ffc107;
+        padding: 1rem;
+        border-radius: 8px;
+        margin: 1rem 0;
+    }
+    
+    /* Success boxes */
+    .success-box {
+        background: #d4edda;
+        border-left: 4px solid #28a745;
+        padding: 1rem;
+        border-radius: 8px;
+        margin: 1rem 0;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# Enhanced Header
+# Initialize session state
+if 'data' not in st.session_state:
+    st.session_state.data = None
+if 'analysis_complete' not in st.session_state:
+    st.session_state.analysis_complete = False
+
+# Header
 st.markdown("""
-<div class="main-header">
-    <h1>🚀 PFAD Procurement Analytics Dashboard</h1>
-    <p style="font-size: 1.2em; margin-bottom: 0;">AI-Powered Statistical Analysis for Strategic Decision Making</p>
-    <p style="font-size: 0.9em; opacity: 0.8;">Advanced Statistics • Professional Analytics • Strategic Intelligence</p>
+<div class="dashboard-header">
+    <h1 style="margin: 0; font-size: 2.5rem;">🚀 PFAD Advanced Analytics Platform</h1>
+    <p style="margin: 0.5rem 0 0 0; opacity: 0.9;">AI-Powered Procurement Intelligence with Advanced Statistical Analysis</p>
 </div>
 """, unsafe_allow_html=True)
 
-# Enhanced Sidebar
-st.sidebar.header("📁 Data Upload & Controls")
-st.sidebar.markdown("---")
+# Sidebar
+with st.sidebar:
+    st.markdown("### 📁 Data Upload")
+    uploaded_file = st.file_uploader(
+        "Upload PFAD Market Data",
+        type=['csv', 'xlsx', 'xls'],
+        help="Upload your Excel or CSV file containing PFAD market data"
+    )
+    
+    st.markdown("### ⚙️ Analysis Settings")
+    
+    analysis_mode = st.selectbox(
+        "Analysis Mode",
+        ["🎯 Comprehensive Analysis", "📈 Time Series Focus", "🔗 Correlation Analysis", 
+         "🔮 Predictive Analytics", "⚠️ Risk Assessment", "🔬 Statistical Deep Dive"]
+    )
+    
+    confidence_level = st.slider(
+        "Confidence Level (%)",
+        min_value=90,
+        max_value=99,
+        value=95,
+        help="Confidence level for statistical tests and intervals"
+    )
+    
+    forecast_days = st.slider(
+        "Forecast Horizon (days)",
+        min_value=7,
+        max_value=90,
+        value=30,
+        help="Number of days to forecast ahead"
+    )
+    
+    st.markdown("### 📊 Advanced Options")
+    
+    enable_outlier_detection = st.checkbox("Enable Outlier Detection", value=True)
+    enable_regime_detection = st.checkbox("Enable Market Regime Detection", value=True)
+    enable_causality_test = st.checkbox("Enable Granger Causality Test", value=False)
+    
+    if st.button("🔄 Reset Analysis", type="secondary"):
+        st.session_state.data = None
+        st.session_state.analysis_complete = False
+        st.rerun()
 
-# File upload with better styling
-uploaded_file = st.sidebar.file_uploader(
-    "📊 Upload Your Excel File",
-    type=['xlsx', 'xls'],
-    help="Upload your PFAD Data Analytics Excel file (Max: 200MB)"
-)
-
-# Analysis settings
-st.sidebar.header("⚙️ Analysis Settings")
-correlation_threshold = st.sidebar.slider(
-    "Correlation Strength Filter",
-    min_value=0.0,
-    max_value=1.0,
-    value=0.3,
-    step=0.1,
-    help="Show correlations above this threshold"
-)
-
-confidence_level = st.sidebar.selectbox(
-    "Confidence Level",
-    options=[0.90, 0.95, 0.99],
-    index=1,
-    help="Confidence level for statistical tests and intervals"
-)
-
-show_p_values = st.sidebar.checkbox("Show Statistical Significance", value=True)
-show_confidence_intervals = st.sidebar.checkbox("Show Confidence Intervals", value=True)
-chart_height = st.sidebar.slider("Chart Height", 400, 800, 500)
-
-# Advanced statistical settings
-with st.sidebar.expander("🔬 Advanced Statistical Options"):
-    normality_test = st.checkbox("Perform Normality Tests", value=False)
-    outlier_detection = st.checkbox("Detect Statistical Outliers", value=True)
-    bootstrap_samples = st.slider("Bootstrap Samples", 100, 2000, 1000)
-
-st.sidebar.markdown("---")
-st.sidebar.info("💡 **Tip**: Enable advanced statistical options for deeper analysis")
-
-def calculate_correlation_stats(x, y, confidence_level=0.95):
-    """Calculate comprehensive correlation statistics"""
+# Main content area
+if uploaded_file is not None:
     try:
-        # Remove NaN values
-        data = pd.concat([x, y], axis=1).dropna()
-        if len(data) < 3:
-            return None
-        
-        x_clean, y_clean = data.iloc[:, 0], data.iloc[:, 1]
-        n = len(x_clean)
-        
-        # Basic correlation and p-value
-        corr, p_val = stats.pearsonr(x_clean, y_clean)
-        
-        # Confidence interval for correlation
-        alpha = 1 - confidence_level
-        z_crit = stats.norm.ppf(1 - alpha/2)
-        
-        # Fisher z-transformation
-        z_r = 0.5 * np.log((1 + corr) / (1 - corr))
-        se_z = 1 / np.sqrt(n - 3)
-        
-        z_lower = z_r - z_crit * se_z
-        z_upper = z_r + z_crit * se_z
-        
-        # Transform back to correlation scale
-        ci_lower = (np.exp(2 * z_lower) - 1) / (np.exp(2 * z_lower) + 1)
-        ci_upper = (np.exp(2 * z_upper) - 1) / (np.exp(2 * z_upper) + 1)
-        
-        # Effect size interpretation
-        if abs(corr) < 0.1:
-            effect_size = "Negligible"
-        elif abs(corr) < 0.3:
-            effect_size = "Small"
-        elif abs(corr) < 0.5:
-            effect_size = "Medium"
-        elif abs(corr) < 0.7:
-            effect_size = "Large"
+        # Load data
+        if uploaded_file.name.endswith('.csv'):
+            df = pd.read_csv(uploaded_file)
         else:
-            effect_size = "Very Large"
-        
-        # Statistical power (approximate)
-        power = stats.norm.cdf(z_crit - abs(z_r * np.sqrt(n - 3))) + stats.norm.cdf(-z_crit - abs(z_r * np.sqrt(n - 3)))
-        power = 1 - power
-        
-        return {
-            'correlation': corr,
-            'p_value': p_val,
-            'ci_lower': ci_lower,
-            'ci_upper': ci_upper,
-            'sample_size': n,
-            'effect_size': effect_size,
-            'statistical_power': power,
-            'degrees_freedom': n - 2
-        }
-    except:
-        return None
-
-def perform_normality_test(data, alpha=0.05):
-    """Perform Shapiro-Wilk normality test"""
-    try:
-        if len(data) < 3:
-            return None
-        
-        # Use sample if data is too large
-        if len(data) > 5000:
-            sample_data = np.random.choice(data.dropna(), 5000, replace=False)
-        else:
-            sample_data = data.dropna()
-        
-        stat, p_val = stats.shapiro(sample_data)
-        
-        return {
-            'statistic': stat,
-            'p_value': p_val,
-            'is_normal': p_val > alpha,
-            'interpretation': 'Normal distribution' if p_val > alpha else 'Non-normal distribution'
-        }
-    except:
-        return None
-
-def detect_outliers(data, method='iqr'):
-    """Detect statistical outliers using IQR or Z-score method"""
-    try:
-        data_clean = data.dropna()
-        if len(data_clean) < 4:
-            return None
-        
-        if method == 'iqr':
-            Q1 = data_clean.quantile(0.25)
-            Q3 = data_clean.quantile(0.75)
-            IQR = Q3 - Q1
-            lower_bound = Q1 - 1.5 * IQR
-            upper_bound = Q3 + 1.5 * IQR
-            outliers = data_clean[(data_clean < lower_bound) | (data_clean > upper_bound)]
-        
-        elif method == 'zscore':
-            z_scores = np.abs(stats.zscore(data_clean))
-            outliers = data_clean[z_scores > 3]
-        
-        outlier_percentage = (len(outliers) / len(data_clean)) * 100
-        
-        return {
-            'outlier_count': len(outliers),
-            'outlier_percentage': outlier_percentage,
-            'outlier_indices': outliers.index.tolist(),
-            'outlier_values': outliers.tolist(),
-            'method': method
-        }
-    except:
-        return None
-
-def bootstrap_correlation(x, y, n_bootstrap=1000, confidence_level=0.95):
-    """Calculate bootstrap confidence interval for correlation"""
-    try:
-        data = pd.concat([x, y], axis=1).dropna()
-        if len(data) < 10:
-            return None
-        
-        bootstrap_corrs = []
-        n = len(data)
-        
-        for _ in range(n_bootstrap):
-            # Bootstrap sample
-            indices = np.random.choice(n, n, replace=True)
-            sample = data.iloc[indices]
-            
-            # Calculate correlation
-            if len(sample) > 2:
-                corr, _ = stats.pearsonr(sample.iloc[:, 0], sample.iloc[:, 1])
-                bootstrap_corrs.append(corr)
-        
-        if len(bootstrap_corrs) == 0:
-            return None
-        
-        # Calculate confidence interval
-        alpha = 1 - confidence_level
-        ci_lower = np.percentile(bootstrap_corrs, (alpha/2) * 100)
-        ci_upper = np.percentile(bootstrap_corrs, (1 - alpha/2) * 100)
-        
-        return {
-            'bootstrap_correlations': bootstrap_corrs,
-            'ci_lower': ci_lower,
-            'ci_upper': ci_upper,
-            'mean_correlation': np.mean(bootstrap_corrs),
-            'std_correlation': np.std(bootstrap_corrs)
-        }
-    except:
-        return None
-
-if uploaded_file:
-    try:
-        # Load data with progress
-        with st.spinner("📊 Loading and processing your data..."):
             df = pd.read_excel(uploaded_file)
+        
+        # Store in session state
+        st.session_state.data = df
+        st.session_state.analysis_complete = True
+        
+        # Data preprocessing
+        df['Date'] = pd.to_datetime(df.iloc[:, 0])
+        df = df.sort_values('Date')
+        
+        # Identify columns
+        pfad_col = next((col for col in df.columns if 'PFAD' in col.upper() and 'INR' in col.upper()), None)
+        cpo_col = next((col for col in df.columns if 'CPO' in col.upper()), None)
+        usd_inr_col = next((col for col in df.columns if 'USD' in col.upper() and 'INR' in col.upper()), None)
+        
+        if pfad_col:
+            # Calculate returns and statistics
+            df['PFAD_Returns'] = df[pfad_col].pct_change()
+            df['PFAD_Log_Returns'] = np.log(df[pfad_col] / df[pfad_col].shift(1))
+            df['PFAD_Volatility'] = df['PFAD_Returns'].rolling(window=30).std() * np.sqrt(252)
             
-        st.success(f"✅ Successfully loaded {len(df):,} records from {uploaded_file.name}")
-        
-        # Get numeric columns
-        numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
-        
-        # Key Metrics Row
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            st.metric(
-                label="📈 Total Records",
-                value=f"{len(df):,}",
-                help="Number of data points in your dataset"
-            )
-        
-        with col2:
-            st.metric(
-                label="🔢 Numeric Variables",
-                value=f"{len(numeric_cols)}",
-                help="Variables available for statistical analysis"
-            )
-        
-        with col3:
-            missing_pct = (df.isnull().sum().sum() / (len(df) * len(df.columns))) * 100
-            st.metric(
-                label="📋 Data Quality",
-                value=f"{100-missing_pct:.1f}%",
-                help="Percentage of complete data"
-            )
-        
-        with col4:
-            if len(numeric_cols) > 0:
-                avg_correlation = df[numeric_cols].corr().abs().mean().mean()
-                st.metric(
-                    label="📊 Avg |Correlation|",
-                    value=f"{avg_correlation:.3f}",
-                    help="Average absolute correlation across variables"
-                )
-        
-        # Create tabs for different analyses
-        tab1, tab2, tab3, tab4, tab5 = st.tabs([
-            "📊 Data Overview", 
-            "🌡️ Correlation Analysis", 
-            "🎯 PFAD Insights", 
-            "📈 Advanced Statistics",
-            "🔬 Statistical Tests"
-        ])
-        
-        with tab1:
-            st.header("📋 Dataset Overview")
+            # Create tabs for different analysis sections
+            tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+                "📊 Overview", "📈 Statistical Analysis", "🔗 Correlations", 
+                "🔮 Forecasting", "⚠️ Risk Analysis", "🤖 AI Insights"
+            ])
             
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.subheader("📊 Data Preview")
-                st.dataframe(df.head(10), use_container_width=True)
-            
-            with col2:
-                st.subheader("📈 Summary Statistics")
-                if len(numeric_cols) > 0:
-                    summary_stats = df[numeric_cols].describe()
-                    st.dataframe(summary_stats, use_container_width=True)
-                else:
-                    st.info("No numeric columns found for summary statistics")
-            
-            # Enhanced column information with statistical insights
-            st.subheader("📋 Statistical Data Profile")
-            if len(numeric_cols) > 0:
-                profile_data = []
-                for col in numeric_cols:
-                    col_data = df[col].dropna()
-                    if len(col_data) > 0:
-                        profile_data.append({
-                            'Variable': col,
-                            'Count': len(col_data),
-                            'Missing': df[col].isnull().sum(),
-                            'Mean': col_data.mean(),
-                            'Std Dev': col_data.std(),
-                            'Min': col_data.min(),
-                            'Max': col_data.max(),
-                            'Skewness': stats.skew(col_data),
-                            'Kurtosis': stats.kurtosis(col_data),
-                            'CV%': (col_data.std() / col_data.mean() * 100) if col_data.mean() != 0 else 0
-                        })
+            with tab1:
+                st.markdown("## Market Overview & Key Metrics")
                 
-                profile_df = pd.DataFrame(profile_data)
-                st.dataframe(profile_df.round(3), use_container_width=True)
+                # Key metrics
+                col1, col2, col3, col4 = st.columns(4)
                 
-                # Statistical insights
-                st.markdown("""
-                <div class="statistical-box">
-                <h4>📊 Key Statistical Insights</h4>
-                """, unsafe_allow_html=True)
+                current_price = df[pfad_col].iloc[-1]
+                price_change_30d = ((current_price - df[pfad_col].iloc[-31]) / df[pfad_col].iloc[-31] * 100) if len(df) > 30 else 0
+                current_volatility = df['PFAD_Volatility'].iloc[-1] * 100 if not pd.isna(df['PFAD_Volatility'].iloc[-1]) else 0
                 
-                high_var_cols = profile_df[profile_df['CV%'] > 50]['Variable'].tolist()
-                skewed_cols = profile_df[abs(profile_df['Skewness']) > 1]['Variable'].tolist()
+                with col1:
+                    st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+                    st.metric(
+                        "Current PFAD Price",
+                        f"₹{current_price:,.0f}/ton",
+                        f"{price_change_30d:+.2f}%"
+                    )
+                    st.markdown('</div>', unsafe_allow_html=True)
                 
-                if high_var_cols:
-                    st.write(f"**High Variability Variables** (CV > 50%): {', '.join(high_var_cols[:3])}")
+                with col2:
+                    st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+                    st.metric(
+                        "30-Day Volatility",
+                        f"{current_volatility:.1f}%",
+                        "Annualized"
+                    )
+                    st.markdown('</div>', unsafe_allow_html=True)
                 
-                if skewed_cols:
-                    st.write(f"**Highly Skewed Variables** (|skewness| > 1): {', '.join(skewed_cols[:3])}")
+                with col3:
+                    avg_price = df[pfad_col].mean()
+                    st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+                    st.metric(
+                        "Average Price",
+                        f"₹{avg_price:,.0f}/ton",
+                        f"Last {len(df)} days"
+                    )
+                    st.markdown('</div>', unsafe_allow_html=True)
                 
-                st.write(f"**Average Coefficient of Variation**: {profile_df['CV%'].mean():.1f}%")
-                st.markdown("</div>", unsafe_allow_html=True)
-        
-        with tab2:
-            st.header("🌡️ Advanced Correlation Analysis")
-            
-            if len(numeric_cols) > 1:
-                # Calculate correlations
-                corr_matrix = df[numeric_cols].corr()
+                with col4:
+                    price_range = df[pfad_col].max() - df[pfad_col].min()
+                    st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+                    st.metric(
+                        "Price Range",
+                        f"₹{price_range:,.0f}",
+                        "High-Low Spread"
+                    )
+                    st.markdown('</div>', unsafe_allow_html=True)
                 
-                # Enhanced correlation heatmap with statistical annotations
-                fig_heatmap = px.imshow(
-                    corr_matrix,
-                    text_auto=True,
-                    aspect="auto",
-                    title="📊 Statistical Correlation Matrix",
-                    color_continuous_scale="RdYlBu_r",
-                    zmin=-1,
-                    zmax=1
+                # Price chart with advanced indicators
+                fig = make_subplots(
+                    rows=3, cols=1,
+                    shared_xaxes=True,
+                    vertical_spacing=0.05,
+                    row_heights=[0.6, 0.2, 0.2],
+                    subplot_titles=('PFAD Price with Moving Averages', 'Volume', 'RSI Indicator')
                 )
                 
-                fig_heatmap.update_layout(
-                    height=chart_height,
-                    title_x=0.5,
-                    font=dict(size=12)
+                # Price and moving averages
+                fig.add_trace(
+                    go.Scatter(x=df['Date'], y=df[pfad_col], name='PFAD Price', line=dict(color='#667eea', width=2)),
+                    row=1, col=1
                 )
                 
-                fig_heatmap.update_traces(
-                    hovertemplate="<b>%{y}</b> vs <b>%{x}</b><br>Correlation: %{z:.3f}<extra></extra>"
+                # Add moving averages
+                for window, color in [(7, '#10b981'), (30, '#f59e0b'), (90, '#ef4444')]:
+                    ma = df[pfad_col].rolling(window=window).mean()
+                    fig.add_trace(
+                        go.Scatter(x=df['Date'], y=ma, name=f'{window}-Day MA', line=dict(color=color, width=1.5)),
+                        row=1, col=1
+                    )
+                
+                # Add Bollinger Bands
+                bb_window = 20
+                bb_std = 2
+                rolling_mean = df[pfad_col].rolling(window=bb_window).mean()
+                rolling_std = df[pfad_col].rolling(window=bb_window).std()
+                upper_band = rolling_mean + (rolling_std * bb_std)
+                lower_band = rolling_mean - (rolling_std * bb_std)
+                
+                fig.add_trace(
+                    go.Scatter(x=df['Date'], y=upper_band, name='Upper BB', line=dict(color='rgba(128,128,128,0.3)', dash='dash')),
+                    row=1, col=1
+                )
+                fig.add_trace(
+                    go.Scatter(x=df['Date'], y=lower_band, name='Lower BB', line=dict(color='rgba(128,128,128,0.3)', dash='dash'),
+                              fill='tonexty', fillcolor='rgba(128,128,128,0.1)'),
+                    row=1, col=1
                 )
                 
-                st.plotly_chart(fig_heatmap, use_container_width=True)
+                # Volume (if available)
+                if 'Volume' in df.columns or 'CPO Volume' in df.columns:
+                    vol_col = 'Volume' if 'Volume' in df.columns else 'CPO Volume'
+                    fig.add_trace(
+                        go.Bar(x=df['Date'], y=df[vol_col], name='Volume', marker_color='lightblue'),
+                        row=2, col=1
+                    )
                 
-                # Correlation distribution analysis
-                st.subheader("📈 Correlation Distribution Analysis")
+                # RSI
+                def calculate_rsi(prices, period=14):
+                    delta = prices.diff()
+                    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+                    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+                    rs = gain / loss
+                    return 100 - (100 / (1 + rs))
+                
+                rsi = calculate_rsi(df[pfad_col])
+                fig.add_trace(
+                    go.Scatter(x=df['Date'], y=rsi, name='RSI', line=dict(color='purple')),
+                    row=3, col=1
+                )
+                
+                # Add RSI levels
+                fig.add_hline(y=70, line_dash="dash", line_color="red", row=3, col=1)
+                fig.add_hline(y=30, line_dash="dash", line_color="green", row=3, col=1)
+                
+                fig.update_layout(height=800, showlegend=True, title_text="PFAD Price Analysis Dashboard")
+                fig.update_xaxes(rangeslider_visible=False)
+                
+                st.plotly_chart(fig, use_container_width=True)
+            
+            with tab2:
+                st.markdown("## 📈 Advanced Statistical Analysis")
                 
                 col1, col2 = st.columns(2)
                 
                 with col1:
-                    # Histogram of correlations
-                    corr_values = corr_matrix.values[np.triu_indices_from(corr_matrix.values, k=1)]
+                    st.markdown("### Distribution Analysis")
                     
-                    fig_hist = px.histogram(
-                        x=corr_values,
-                        nbins=20,
-                        title="Distribution of Correlation Coefficients",
-                        labels={'x': 'Correlation Coefficient', 'y': 'Frequency'}
-                    )
-                    fig_hist.add_vline(x=0, line_dash="dash", line_color="red")
-                    fig_hist.update_layout(height=400)
-                    st.plotly_chart(fig_hist, use_container_width=True)
+                    # Normality tests
+                    returns = df['PFAD_Returns'].dropna()
+                    
+                    # Jarque-Bera test
+                    jb_stat, jb_pvalue = jarque_bera(returns)
+                    st.markdown(f"""
+                    <div class="stat-result">
+                        <b>Jarque-Bera Test for Normality</b><br>
+                        Statistic: {jb_stat:.4f}<br>
+                        P-value: {jb_pvalue:.4f}<br>
+                        Result: {'Normal Distribution' if jb_pvalue > 0.05 else 'Non-Normal Distribution'} ✓
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # Anderson-Darling test
+                    ad_result = anderson(returns)
+                    st.markdown(f"""
+                    <div class="stat-result">
+                        <b>Anderson-Darling Test</b><br>
+                        Statistic: {ad_result.statistic:.4f}<br>
+                        Critical Value (5%): {ad_result.critical_values[2]:.4f}<br>
+                        Result: {'Normal' if ad_result.statistic < ad_result.critical_values[2] else 'Non-Normal'} ✓
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # Shapiro-Wilk test
+                    if len(returns) < 5000:  # Shapiro-Wilk has sample size limitations
+                        sw_stat, sw_pvalue = stats.shapiro(returns)
+                        st.markdown(f"""
+                        <div class="stat-result">
+                            <b>Shapiro-Wilk Test</b><br>
+                            Statistic: {sw_stat:.4f}<br>
+                            P-value: {sw_pvalue:.4f}<br>
+                            Result: {'Normal' if sw_pvalue > 0.05 else 'Non-Normal'} ✓
+                        </div>
+                        """, unsafe_allow_html=True)
                 
                 with col2:
-                    # Correlation strength breakdown
-                    strong_corr = sum(abs(corr_values) > 0.7)
-                    moderate_corr = sum((abs(corr_values) > 0.3) & (abs(corr_values) <= 0.7))
-                    weak_corr = sum(abs(corr_values) <= 0.3)
+                    st.markdown("### Time Series Properties")
                     
-                    breakdown_data = pd.DataFrame({
-                        'Strength': ['Strong (>0.7)', 'Moderate (0.3-0.7)', 'Weak (≤0.3)'],
-                        'Count': [strong_corr, moderate_corr, weak_corr],
-                        'Percentage': [strong_corr/len(corr_values)*100, 
-                                     moderate_corr/len(corr_values)*100, 
-                                     weak_corr/len(corr_values)*100]
-                    })
+                    # ADF test for stationarity
+                    from statsmodels.tsa.stattools import adfuller
+                    adf_result = adfuller(df[pfad_col].dropna())
                     
-                    fig_pie = px.pie(
-                        breakdown_data, 
-                        values='Count', 
-                        names='Strength',
-                        title="Correlation Strength Distribution"
-                    )
-                    fig_pie.update_layout(height=400)
-                    st.plotly_chart(fig_pie, use_container_width=True)
+                    st.markdown(f"""
+                    <div class="stat-result">
+                        <b>Augmented Dickey-Fuller Test</b><br>
+                        ADF Statistic: {adf_result[0]:.4f}<br>
+                        P-value: {adf_result[1]:.4f}<br>
+                        Result: {'Stationary' if adf_result[1] < 0.05 else 'Non-Stationary'} ✓
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # Hurst exponent
+                    hurst = calculate_hurst_exponent(df[pfad_col].dropna().values)
+                    st.markdown(f"""
+                    <div class="stat-result">
+                        <b>Hurst Exponent</b><br>
+                        Value: {hurst:.4f}<br>
+                        Interpretation: {
+                            'Trending (H > 0.5)' if hurst > 0.5 
+                            else 'Mean-Reverting (H < 0.5)' if hurst < 0.5 
+                            else 'Random Walk (H ≈ 0.5)'
+                        } ✓
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # Autocorrelation
+                    from statsmodels.stats.diagnostic import acorr_ljungbox
+                    lb_result = acorr_ljungbox(returns, lags=10, return_df=True)
+                    
+                    st.markdown(f"""
+                    <div class="stat-result">
+                        <b>Ljung-Box Test (Autocorrelation)</b><br>
+                        Q-Statistic: {lb_result['lb_stat'].iloc[-1]:.4f}<br>
+                        P-value: {lb_result['lb_pvalue'].iloc[-1]:.4f}<br>
+                        Result: {'No Autocorrelation' if lb_result['lb_pvalue'].iloc[-1] > 0.05 else 'Autocorrelation Present'} ✓
+                    </div>
+                    """, unsafe_allow_html=True)
                 
-                # Statistical significance matrix
-                if show_p_values:
-                    st.subheader("🔬 Statistical Significance Matrix")
-                    
-                    # Create p-value matrix
-                    p_value_matrix = pd.DataFrame(index=corr_matrix.index, columns=corr_matrix.columns)
-                    
-                    for i in corr_matrix.index:
-                        for j in corr_matrix.columns:
-                            if i != j:
-                                stats_result = calculate_correlation_stats(df[i], df[j], confidence_level)
-                                if stats_result:
-                                    p_value_matrix.loc[i, j] = stats_result['p_value']
-                            else:
-                                p_value_matrix.loc[i, j] = 0
-                    
-                    # Convert to numeric
-                    p_value_matrix = p_value_matrix.astype(float)
-                    
-                    # Create significance heatmap
-                    significance_matrix = p_value_matrix < 0.05
-                    
-                    fig_sig = px.imshow(
-                        significance_matrix.astype(int),
-                        text_auto=False,
-                        aspect="auto",
-                        title="Statistical Significance Matrix (p < 0.05)",
-                        color_continuous_scale=["white", "green"],
-                        labels=dict(color="Significant")
-                    )
-                    
-                    fig_sig.update_layout(height=chart_height//2, title_x=0.5)
-                    st.plotly_chart(fig_sig, use_container_width=True)
-            
-            else:
-                st.warning("Need at least 2 numeric columns for correlation analysis")
-        
-        with tab3:
-            st.header("🎯 PFAD Statistical Insights")
-            
-            # Find PFAD column
-            pfad_col = None
-            for col in numeric_cols:
-                if 'PFAD' in str(col).upper():
-                    pfad_col = col
-                    break
-            
-            if pfad_col:
-                st.success(f"📊 Found PFAD column: **{pfad_col}**")
+                # Distribution plots
+                st.markdown("### Return Distribution Analysis")
                 
-                if len(numeric_cols) > 1:
-                    # Calculate correlations
-                    corr_matrix = df[numeric_cols].corr()
-                    pfad_corr = corr_matrix[pfad_col].drop(pfad_col).sort_values(key=abs, ascending=False)
-                    
-                    # Enhanced PFAD analysis with statistical details
-                    st.subheader("📈 PFAD Correlation Analysis with Statistical Metrics")
-                    
-                    # Create detailed statistics table
-                    detailed_stats = []
-                    for var in pfad_corr.index:
-                        stats_result = calculate_correlation_stats(df[pfad_col], df[var], confidence_level)
-                        
-                        if stats_result:
-                            detailed_stats.append({
-                                'Variable': var,
-                                'Correlation': f"{stats_result['correlation']:.3f}",
-                                'P-Value': f"{stats_result['p_value']:.6f}",
-                                'CI Lower': f"{stats_result['ci_lower']:.3f}",
-                                'CI Upper': f"{stats_result['ci_upper']:.3f}",
-                                'Effect Size': stats_result['effect_size'],
-                                'Sample Size': stats_result['sample_size'],
-                                'Statistical Power': f"{stats_result['statistical_power']:.3f}"
-                            })
-                    
-                    if detailed_stats:
-                        stats_df = pd.DataFrame(detailed_stats)
-                        st.dataframe(stats_df, use_container_width=True)
-                        
-                        # Enhanced bar chart with confidence intervals
-                        fig_bar = go.Figure()
-                        
-                        for _, row in stats_df.iterrows():
-                            corr = float(row['Correlation'])
-                            ci_lower = float(row['CI Lower'])
-                            ci_upper = float(row['CI Upper'])
-                            
-                            # Color based on effect size
-                            if row['Effect Size'] == 'Very Large':
-                                color = '#27ae60'
-                            elif row['Effect Size'] == 'Large':
-                                color = '#2ecc71'
-                            elif row['Effect Size'] == 'Medium':
-                                color = '#f39c12'
-                            elif row['Effect Size'] == 'Small':
-                                color = '#e67e22'
-                            else:
-                                color = '#e74c3c'
-                            
-                            # Add bar
-                            fig_bar.add_trace(go.Bar(
-                                x=[corr],
-                                y=[row['Variable']],
-                                orientation='h',
-                                marker_color=color,
-                                text=f"{corr:.3f}",
-                                textposition='auto',
-                                name=row['Variable'],
-                                showlegend=False,
-                                hovertemplate=f"<b>{row['Variable']}</b><br>" +
-                                            f"Correlation: {corr:.3f}<br>" +
-                                            f"95% CI: [{ci_lower:.3f}, {ci_upper:.3f}]<br>" +
-                                            f"Effect Size: {row['Effect Size']}<br>" +
-                                            f"P-value: {row['P-Value']}<extra></extra>"
-                            ))
-                            
-                            # Add confidence interval error bars
-                            if show_confidence_intervals:
-                                fig_bar.add_trace(go.Scatter(
-                                    x=[ci_lower, ci_upper],
-                                    y=[row['Variable'], row['Variable']],
-                                    mode='lines',
-                                    line=dict(color='black', width=2),
-                                    showlegend=False,
-                                    hoverinfo='skip'
-                                ))
-                        
-                        fig_bar.update_layout(
-                            title=f"🎯 {pfad_col} Correlations with {confidence_level*100:.0f}% Confidence Intervals",
-                            xaxis_title="Correlation Coefficient",
-                            height=chart_height,
-                            title_x=0.5
-                        )
-                        
-                        # Add reference lines
-                        fig_bar.add_vline(x=0, line_dash="solid", line_color="black", opacity=0.5)
-                        fig_bar.add_vline(x=0.3, line_dash="dash", line_color="orange", opacity=0.7)
-                        fig_bar.add_vline(x=0.7, line_dash="dot", line_color="green", opacity=0.7)
-                        fig_bar.add_vline(x=-0.3, line_dash="dash", line_color="orange", opacity=0.7)
-                        fig_bar.add_vline(x=-0.7, line_dash="dot", line_color="green", opacity=0.7)
-                        
-                        st.plotly_chart(fig_bar, use_container_width=True)
-                        
-                        # Statistical interpretation
-                        st.markdown("""
-                        <div class="statistical-box">
-                        <h4>📊 Statistical Interpretation Guide</h4>
-                        """, unsafe_allow_html=True)
-                        
-                        strong_significant = len([s for s in detailed_stats if float(s['P-Value']) < 0.05 and abs(float(s['Correlation'])) > 0.7])
-                        total_significant = len([s for s in detailed_stats if float(s['P-Value']) < 0.05])
-                        
-                        st.write(f"• **Statistically Significant Correlations**: {total_significant}/{len(detailed_stats)} variables")
-                        st.write(f"• **Strong & Significant**: {strong_significant} variables (|r| > 0.7, p < 0.05)")
-                        st.write(f"• **Confidence Level**: {confidence_level*100:.0f}% confidence intervals shown")
-                        st.write("• **Effect Size**: Cohen's guidelines for correlation interpretation")
-                        
-                        st.markdown("</div>", unsafe_allow_html=True)
-                        
-                        # Business recommendations based on statistical analysis
-                        significant_strong = [s for s in detailed_stats if float(s['P-Value']) < 0.05 and abs(float(s['Correlation'])) > 0.5]
-                        
-                        if significant_strong:
-                            st.markdown("""
-                            <div class="insight-box">
-                            <h3>🎯 Evidence-Based Procurement Recommendations</h3>
-                            """, unsafe_allow_html=True)
-                            
-                            top_predictor = significant_strong[0]
-                            st.write(f"• **Primary Indicator**: {top_predictor['Variable']} (r = {top_predictor['Correlation']}, p = {top_predictor['P-Value']})")
-                            st.write(f"• **Statistical Confidence**: {confidence_level*100:.0f}% confidence interval: [{top_predictor['CI Lower']}, {top_predictor['CI Upper']}]")
-                            st.write(f"• **Effect Size**: {top_predictor['Effect Size']} relationship")
-                            st.write(f"• **Statistical Power**: {top_predictor['Statistical Power']} (reliability of detection)")
-                            
-                            st.write("\n**Strategic Actions:**")
-                            st.write("• Implement real-time monitoring for statistically significant variables")
-                            st.write("• Set procurement thresholds based on confidence intervals")
-                            st.write("• Focus resources on variables with large effect sizes")
-                            
-                            st.markdown("</div>", unsafe_allow_html=True)
-                    
-                else:
-                    st.info("Need more numeric variables for comprehensive PFAD analysis")
-            
-            else:
-                st.warning("🔍 No PFAD column found in your data")
-                st.info("💡 Make sure your PFAD column contains 'PFAD' in the name")
-        
-        with tab4:
-            st.header("📈 Advanced Statistical Analytics")
-            
-            if len(numeric_cols) > 1 and pfad_col:
-                # Bootstrap analysis
-                st.subheader("🔄 Bootstrap Confidence Analysis")
-                
-                selected_var_bootstrap = st.selectbox(
-                    "Select variable for bootstrap analysis:",
-                    options=pfad_corr.abs().sort_values(ascending=False).index.tolist()
+                fig_dist = make_subplots(
+                    rows=1, cols=2,
+                    subplot_titles=('Return Distribution', 'Q-Q Plot')
                 )
                 
-                if selected_var_bootstrap:
-                    with st.spinner("Performing bootstrap analysis..."):
-                        bootstrap_result = bootstrap_correlation(
-                            df[pfad_col], 
-                            df[selected_var_bootstrap], 
-                            bootstrap_samples, 
-                            confidence_level
-                        )
-                    
-                    if bootstrap_result:
-                        col1, col2 = st.columns(2)
-                        
-                        with col1:
-                            # Bootstrap distribution
-                            fig_bootstrap = px.histogram(
-                                x=bootstrap_result['bootstrap_correlations'],
-                                nbins=50,
-                                title=f"Bootstrap Distribution (n={bootstrap_samples})",
-                                labels={'x': 'Correlation Coefficient', 'y': 'Frequency'}
-                            )
-                            
-                            # Add confidence interval lines
-                            fig_bootstrap.add_vline(
-                                x=bootstrap_result['ci_lower'], 
-                                line_dash="dash", 
-                                line_color="red",
-                                annotation_text=f"CI Lower: {bootstrap_result['ci_lower']:.3f}"
-                            )
-                            fig_bootstrap.add_vline(
-                                x=bootstrap_result['ci_upper'], 
-                                line_dash="dash", 
-                                line_color="red",
-                                annotation_text=f"CI Upper: {bootstrap_result['ci_upper']:.3f}"
-                            )
-                            
-                            st.plotly_chart(fig_bootstrap, use_container_width=True)
-                        
-                        with col2:
-                            st.markdown(f"""
-                            **Bootstrap Results:**
-                            - **Mean Correlation**: {bootstrap_result['mean_correlation']:.3f}
-                            - **Standard Error**: {bootstrap_result['std_correlation']:.3f}
-                            - **{confidence_level*100:.0f}% CI Lower**: {bootstrap_result['ci_lower']:.3f}
-                            - **{confidence_level*100:.0f}% CI Upper**: {bootstrap_result['ci_upper']:.3f}
-                            - **Bootstrap Samples**: {len(bootstrap_result['bootstrap_correlations'])}
-                            
-                            **Interpretation:**
-                            The bootstrap method provides a robust estimate of the correlation 
-                            and its uncertainty without assumptions about the data distribution.
-                            """)
+                # Histogram with normal overlay
+                fig_dist.add_trace(
+                    go.Histogram(x=returns, nbinsx=50, name='Actual Returns', histnorm='probability density'),
+                    row=1, col=1
+                )
                 
-                # Rolling correlation analysis
-                st.subheader("📊 Rolling Correlation Stability")
+                # Normal distribution overlay
+                x_range = np.linspace(returns.min(), returns.max(), 100)
+                normal_dist = stats.norm.pdf(x_range, returns.mean(), returns.std())
+                fig_dist.add_trace(
+                    go.Scatter(x=x_range, y=normal_dist, name='Normal Distribution', line=dict(color='red')),
+                    row=1, col=1
+                )
                 
-                if 'Date' in df.columns or hasattr(df.index, 'strftime'):
-                    window_size = st.slider("Rolling Window Size", 6, min(50, len(df)//4), 12)
+                # Q-Q plot
+                theoretical_quantiles = stats.norm.ppf(np.linspace(0.01, 0.99, len(returns)))
+                sample_quantiles = np.sort(returns)
+                
+                fig_dist.add_trace(
+                    go.Scatter(x=theoretical_quantiles, y=sample_quantiles, mode='markers', name='Q-Q Plot'),
+                    row=1, col=2
+                )
+                fig_dist.add_trace(
+                    go.Scatter(x=theoretical_quantiles, y=theoretical_quantiles, mode='lines', name='Normal Line', line=dict(color='red')),
+                    row=1, col=2
+                )
+                
+                fig_dist.update_layout(height=400, showlegend=True)
+                st.plotly_chart(fig_dist, use_container_width=True)
+            
+            with tab3:
+                st.markdown("## 🔗 Advanced Correlation Analysis")
+                
+                # Prepare correlation data
+                corr_columns = [col for col in df.columns if df[col].dtype in ['float64', 'int64'] and col not in ['Date']]
+                
+                if len(corr_columns) > 1:
+                    # Correlation matrix
+                    corr_matrix = df[corr_columns].corr()
                     
-                    rolling_var = st.selectbox(
-                        "Select variable for rolling correlation:",
-                        options=pfad_corr.abs().sort_values(ascending=False).index.tolist(),
-                        key="rolling_var"
+                    # Heatmap
+                    fig_corr = go.Figure(data=go.Heatmap(
+                        z=corr_matrix.values,
+                        x=corr_matrix.columns,
+                        y=corr_matrix.index,
+                        colorscale='RdBu',
+                        zmid=0,
+                        text=corr_matrix.round(3).values,
+                        texttemplate='%{text}',
+                        textfont={"size": 10}
+                    ))
+                    
+                    fig_corr.update_layout(
+                        title='Correlation Matrix Heatmap',
+                        height=600,
+                        xaxis_tickangle=-45
                     )
                     
-                    if rolling_var and len(df) > window_size:
-                        # Calculate rolling correlation
-                        rolling_corr = df[pfad_col].rolling(window=window_size).corr(df[rolling_var])
-                        
-                        # Calculate rolling statistics
-                        rolling_mean = rolling_corr.rolling(window=window_size).mean()
-                        rolling_std = rolling_corr.rolling(window=window_size).std()
+                    st.plotly_chart(fig_corr, use_container_width=True)
+                    
+                    # Dynamic correlation analysis
+                    st.markdown("### Dynamic Correlation Analysis")
+                    
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        var1 = st.selectbox("Select Variable 1", corr_columns, index=0)
+                    with col2:
+                        var2 = st.selectbox("Select Variable 2", [col for col in corr_columns if col != var1], index=0)
+                    
+                    if var1 and var2:
+                        # Rolling correlation
+                        rolling_corr = calculate_rolling_correlation(df, var1, var2, window=30)
                         
                         fig_rolling = go.Figure()
-                        
-                        # Add rolling correlation
                         fig_rolling.add_trace(go.Scatter(
-                            x=rolling_corr.index,
+                            x=df['Date'],
                             y=rolling_corr,
                             mode='lines',
-                            name='Rolling Correlation',
-                            line=dict(width=2, color='blue')
+                            name='30-Day Rolling Correlation',
+                            line=dict(color='purple', width=2)
                         ))
+                        
+                        # Add zero line
+                        fig_rolling.add_hline(y=0, line_dash="dash", line_color="gray")
                         
                         # Add confidence bands
-                        upper_band = rolling_mean + 1.96 * rolling_std
-                        lower_band = rolling_mean - 1.96 * rolling_std
-                        
-                        fig_rolling.add_trace(go.Scatter(
-                            x=rolling_corr.index,
-                            y=upper_band,
-                            mode='lines',
-                            line=dict(width=0),
-                            showlegend=False,
-                            name='Upper CI'
-                        ))
-                        
-                        fig_rolling.add_trace(go.Scatter(
-                            x=rolling_corr.index,
-                            y=lower_band,
-                            mode='lines',
-                            line=dict(width=0),
-                            fill='tonexty',
-                            fillcolor='rgba(0,100,80,0.2)',
-                            showlegend=False,
-                            name='Lower CI'
-                        ))
-                        
-                        # Add overall mean
-                        overall_corr = pfad_corr[rolling_var]
-                        fig_rolling.add_hline(
-                            y=overall_corr, 
-                            line_dash="dash", 
-                            line_color="red",
-                            annotation_text=f"Overall: {overall_corr:.3f}"
-                        )
+                        fig_rolling.add_hline(y=0.7, line_dash="dot", line_color="green", annotation_text="Strong Positive")
+                        fig_rolling.add_hline(y=-0.7, line_dash="dot", line_color="red", annotation_text="Strong Negative")
                         
                         fig_rolling.update_layout(
-                            title=f"Rolling Correlation: {pfad_col} vs {rolling_var} (Window: {window_size})",
-                            xaxis_title="Time Period",
-                            yaxis_title="Correlation Coefficient",
-                            height=500,
-                            yaxis=dict(range=[-1, 1])
+                            title=f'Rolling Correlation: {var1} vs {var2}',
+                            xaxis_title='Date',
+                            yaxis_title='Correlation',
+                            height=400
                         )
                         
                         st.plotly_chart(fig_rolling, use_container_width=True)
                         
-                        # Stability metrics
-                        stability_score = 1 - (rolling_corr.std() / abs(rolling_corr.mean())) if rolling_corr.mean() != 0 else 0
-                        
-                        col1, col2, col3 = st.columns(3)
-                        with col1:
-                            st.metric("Correlation Stability", f"{stability_score:.3f}", help="Higher values indicate more stable relationships")
-                        with col2:
-                            st.metric("Std Deviation", f"{rolling_corr.std():.3f}", help="Lower values indicate less volatility")
-                        with col3:
-                            trend_slope = np.polyfit(range(len(rolling_corr.dropna())), rolling_corr.dropna(), 1)[0]
-                            st.metric("Trend Slope", f"{trend_slope:.4f}", help="Positive values indicate strengthening correlation")
-                
-                else:
-                    st.info("Date information needed for rolling correlation analysis")
-                
-                # Outlier impact analysis
-                st.subheader("🔍 Outlier Impact Analysis")
-                
-                outlier_var = st.selectbox(
-                    "Select variable for outlier analysis:",
-                    options=[pfad_col] + list(pfad_corr.abs().sort_values(ascending=False).index[:5]),
-                    key="outlier_var"
-                )
-                
-                if outlier_var:
-                    outlier_result = detect_outliers(df[outlier_var], method='iqr')
-                    
-                    if outlier_result:
-                        col1, col2 = st.columns(2)
-                        
-                        with col1:
-                            # Outlier visualization
-                            fig_outlier = go.Figure()
-                            
-                            # Box plot
-                            fig_outlier.add_trace(go.Box(
-                                y=df[outlier_var],
-                                name=outlier_var,
-                                boxpoints='outliers'
-                            ))
-                            
-                            fig_outlier.update_layout(
-                                title=f"Outlier Detection: {outlier_var}",
-                                height=400
-                            )
-                            
-                            st.plotly_chart(fig_outlier, use_container_width=True)
-                        
-                        with col2:
-                            st.markdown(f"""
-                            **Outlier Analysis Results:**
-                            - **Total Outliers**: {outlier_result['outlier_count']}
-                            - **Percentage**: {outlier_result['outlier_percentage']:.2f}%
-                            - **Detection Method**: {outlier_result['method'].upper()}
-                            
-                            **Impact Assessment:**
-                            """)
-                            
-                            if outlier_result['outlier_count'] > 0:
-                                # Calculate correlation with and without outliers
-                                if outlier_var != pfad_col and pfad_col:
-                                    df_no_outliers = df.drop(outlier_result['outlier_indices'])
-                                    
-                                    corr_with = df[pfad_col].corr(df[outlier_var])
-                                    corr_without = df_no_outliers[pfad_col].corr(df_no_outliers[outlier_var])
-                                    
-                                    impact = abs(corr_with - corr_without)
-                                    
-                                    st.write(f"- **Correlation with outliers**: {corr_with:.3f}")
-                                    st.write(f"- **Correlation without outliers**: {corr_without:.3f}")
-                                    st.write(f"- **Impact magnitude**: {impact:.3f}")
-                                    
-                                    if impact > 0.1:
-                                        st.warning("⚠️ Outliers significantly affect correlation")
-                                    else:
-                                        st.success("✅ Outliers have minimal impact")
-            
-            else:
-                st.info("PFAD column and additional numeric variables needed for advanced analytics")
-        
-        with tab5:
-            st.header("🔬 Comprehensive Statistical Tests")
-            
-            if len(numeric_cols) > 0:
-                # Normality testing
-                if normality_test:
-                    st.subheader("📊 Normality Assessment")
-                    
-                    normality_var = st.selectbox(
-                        "Select variable for normality testing:",
-                        options=numeric_cols,
-                        key="normality_var"
-                    )
-                    
-                    if normality_var:
-                        normality_result = perform_normality_test(df[normality_var])
-                        
-                        if normality_result:
-                            col1, col2 = st.columns(2)
-                            
-                            with col1:
-                                # Q-Q plot
-                                data_clean = df[normality_var].dropna()
-                                
-                                fig_qq = go.Figure()
-                                
-                                # Generate theoretical quantiles
-                                theoretical_quantiles = stats.norm.ppf(np.linspace(0.01, 0.99, len(data_clean)))
-                                sample_quantiles = np.sort(data_clean)
-                                
-                                fig_qq.add_trace(go.Scatter(
-                                    x=theoretical_quantiles,
-                                    y=sample_quantiles,
-                                    mode='markers',
-                                    name='Data Points'
-                                ))
-                                
-                                # Add reference line
-                                min_val, max_val = min(theoretical_quantiles), max(theoretical_quantiles)
-                                fig_qq.add_trace(go.Scatter(
-                                    x=[min_val, max_val],
-                                    y=[min_val * data_clean.std() + data_clean.mean(), 
-                                       max_val * data_clean.std() + data_clean.mean()],
-                                    mode='lines',
-                                    name='Reference Line',
-                                    line=dict(color='red', dash='dash')
-                                ))
-                                
-                                fig_qq.update_layout(
-                                    title="Q-Q Plot (Normal Distribution)",
-                                    xaxis_title="Theoretical Quantiles",
-                                    yaxis_title="Sample Quantiles",
-                                    height=400
-                                )
-                                
-                                st.plotly_chart(fig_qq, use_container_width=True)
-                            
-                            with col2:
-                                # Distribution histogram with normal overlay
-                                fig_dist = px.histogram(
-                                    df, 
-                                    x=normality_var, 
-                                    nbins=30,
-                                    title="Distribution vs Normal Curve",
-                                    density=True
-                                )
-                                
-                                # Add normal distribution overlay
-                                x_norm = np.linspace(data_clean.min(), data_clean.max(), 100)
-                                y_norm = stats.norm.pdf(x_norm, data_clean.mean(), data_clean.std())
-                                
-                                fig_dist.add_trace(go.Scatter(
-                                    x=x_norm,
-                                    y=y_norm,
-                                    mode='lines',
-                                    name='Normal Distribution',
-                                    line=dict(color='red', width=3)
-                                ))
-                                
-                                fig_dist.update_layout(height=400)
-                                st.plotly_chart(fig_dist, use_container_width=True)
-                            
-                            # Normality test results
-                            st.markdown(f"""
-                            <div class="statistical-box">
-                            <h4>📊 Shapiro-Wilk Normality Test Results</h4>
-                            <p><strong>Test Statistic:</strong> {normality_result['statistic']:.4f}</p>
-                            <p><strong>P-Value:</strong> {normality_result['p_value']:.6f}</p>
-                            <p><strong>Result:</strong> {normality_result['interpretation']}</p>
-                            <p><strong>Interpretation:</strong> {'Data appears normally distributed' if normality_result['is_normal'] else 'Data significantly deviates from normal distribution'}</p>
-                            </div>
-                            """, unsafe_allow_html=True)
-                
-                # Correlation significance testing matrix
-                st.subheader("🎯 Comprehensive Correlation Significance Matrix")
-                
-                if len(numeric_cols) > 1:
-                    # Create comprehensive significance table
-                    sig_pairs = []
-                    
-                    for i, var1 in enumerate(numeric_cols):
-                        for j, var2 in enumerate(numeric_cols):
-                            if i < j:  # Avoid duplicates
-                                stats_result = calculate_correlation_stats(df[var1], df[var2], confidence_level)
-                                
-                                if stats_result:
-                                    sig_pairs.append({
-                                        'Variable 1': var1,
-                                        'Variable 2': var2,
-                                        'Correlation': stats_result['correlation'],
-                                        'P-Value': stats_result['p_value'],
-                                        'CI Lower': stats_result['ci_lower'],
-                                        'CI Upper': stats_result['ci_upper'],
-                                        'Effect Size': stats_result['effect_size'],
-                                        'Sample Size': stats_result['sample_size'],
-                                        'Significant': 'Yes' if stats_result['p_value'] < 0.05 else 'No',
-                                        'Power': stats_result['statistical_power']
-                                    })
-                    
-                    if sig_pairs:
-                        sig_df = pd.DataFrame(sig_pairs)
-                        sig_df = sig_df.sort_values('P-Value')
-                        
-                        # Color coding for significance
-                        def color_significance(val):
-                            if val == 'Yes':
-                                return 'background-color: #d5f4e6'
-                            else:
-                                return 'background-color: #f8d7da'
-                        
-                        styled_sig_df = sig_df.style.applymap(color_significance, subset=['Significant'])
-                        st.dataframe(styled_sig_df, use_container_width=True)
-                        
-                        # Summary statistics
-                        total_pairs = len(sig_pairs)
-                        significant_pairs = len([p for p in sig_pairs if p['P-Value'] < 0.05])
-                        strong_significant = len([p for p in sig_pairs if p['P-Value'] < 0.05 and abs(p['Correlation']) > 0.7])
-                        
-                        st.markdown(f"""
-                        <div class="insight-box">
-                        <h4>📊 Statistical Summary</h4>
-                        <p><strong>Total Variable Pairs:</strong> {total_pairs}</p>
-                        <p><strong>Statistically Significant:</strong> {significant_pairs} ({significant_pairs/total_pairs*100:.1f}%)</p>
-                        <p><strong>Strong & Significant:</strong> {strong_significant} ({strong_significant/total_pairs*100:.1f}%)</p>
-                        <p><strong>Confidence Level:</strong> {confidence_level*100:.0f}%</p>
-                        </div>
-                        """, unsafe_allow_html=True)
-                
-                # Power analysis
-                st.subheader("⚡ Statistical Power Analysis")
-                
-                if pfad_col:
-                    power_analysis_data = []
-                    
-                    for var in pfad_corr.index:
-                        stats_result = calculate_correlation_stats(df[pfad_col], df[var], confidence_level)
-                        
-                        if stats_result:
-                            power_analysis_data.append({
-                                'Variable': var,
-                                'Correlation': abs(stats_result['correlation']),
-                                'Sample Size': stats_result['sample_size'],
-                                'Statistical Power': stats_result['statistical_power'],
-                                'Power Category': 'High (>0.8)' if stats_result['statistical_power'] > 0.8 else 
-                                                'Medium (0.5-0.8)' if stats_result['statistical_power'] > 0.5 else 'Low (<0.5)'
-                            })
-                    
-                    if power_analysis_data:
-                        power_df = pd.DataFrame(power_analysis_data)
-                        
-                        # Power vs correlation scatter
-                        fig_power = px.scatter(
-                            power_df,
-                            x='Correlation',
-                            y='Statistical Power',
-                            size='Sample Size',
-                            color='Power Category',
-                            hover_data=['Variable'],
-                            title="Statistical Power vs Correlation Strength"
+                        # Scatter plot with regression
+                        fig_scatter = px.scatter(
+                            df, x=var2, y=var1,
+                            trendline="ols",
+                            title=f'{var1} vs {var2} - Regression Analysis'
                         )
                         
-                        fig_power.add_hline(y=0.8, line_dash="dash", line_color="green", 
-                                          annotation_text="Adequate Power (0.8)")
-                        fig_power.add_hline(y=0.5, line_dash="dash", line_color="orange",
-                                          annotation_text="Moderate Power (0.5)")
+                        st.plotly_chart(fig_scatter, use_container_width=True)
                         
-                        fig_power.update_layout(height=500)
-                        st.plotly_chart(fig_power, use_container_width=True)
-                        
-                        # Power analysis interpretation
-                        high_power = len([p for p in power_analysis_data if p['Statistical Power'] > 0.8])
-                        low_power = len([p for p in power_analysis_data if p['Statistical Power'] < 0.5])
+                        # Statistical significance
+                        corr_value = df[var1].corr(df[var2])
+                        n = len(df)
+                        t_stat = corr_value * np.sqrt((n - 2) / (1 - corr_value**2))
+                        p_value = 2 * (1 - stats.t.cdf(abs(t_stat), n - 2))
                         
                         st.markdown(f"""
-                        <div class="statistical-box">
-                        <h4>⚡ Power Analysis Interpretation</h4>
-                        <p><strong>High Power Variables:</strong> {high_power} (reliable detection of true effects)</p>
-                        <p><strong>Low Power Variables:</strong> {low_power} (may miss true effects)</p>
-                        <p><strong>Recommendation:</strong> Focus on high-power relationships for reliable decision making</p>
+                        <div class="stat-result">
+                            <b>Correlation Analysis Results</b><br>
+                            Correlation Coefficient: {corr_value:.4f}<br>
+                            T-Statistic: {t_stat:.4f}<br>
+                            P-value: {p_value:.4f}<br>
+                            Significance: {'Significant' if p_value < 0.05 else 'Not Significant'} at 95% confidence
                         </div>
                         """, unsafe_allow_html=True)
+                        
+                        # Granger causality test
+                        if enable_causality_test:
+                            granger_pvalue = calculate_granger_causality(df[var1].dropna(), df[var2].dropna())
+                            if granger_pvalue:
+                                st.markdown(f"""
+                                <div class="stat-result">
+                                    <b>Granger Causality Test</b><br>
+                                    {var2} → {var1}: P-value = {granger_pvalue:.4f}<br>
+                                    Result: {f'{var2} Granger-causes {var1}' if granger_pvalue < 0.05 else 'No Granger causality'} ✓
+                                </div>
+                                """, unsafe_allow_html=True)
             
-            else:
-                st.info("Numeric variables needed for statistical testing")
+            with tab4:
+                st.markdown("## 🔮 Advanced Forecasting")
+                
+                # Time series decomposition
+                from statsmodels.tsa.seasonal import seasonal_decompose
+                
+                decomposition = seasonal_decompose(df[pfad_col].dropna(), model='multiplicative', period=30)
+                
+                fig_decomp = make_subplots(
+                    rows=4, cols=1,
+                    shared_xaxes=True,
+                    vertical_spacing=0.05,
+                    subplot_titles=('Original', 'Trend', 'Seasonal', 'Residual')
+                )
+                
+                fig_decomp.add_trace(
+                    go.Scatter(x=df['Date'], y=df[pfad_col], name='Original', line=dict(color='blue')),
+                    row=1, col=1
+                )
+                
+                fig_decomp.add_trace(
+                    go.Scatter(x=df['Date'], y=decomposition.trend, name='Trend', line=dict(color='red')),
+                    row=2, col=1
+                )
+                
+                fig_decomp.add_trace(
+                    go.Scatter(x=df['Date'], y=decomposition.seasonal, name='Seasonal', line=dict(color='green')),
+                    row=3, col=1
+                )
+                
+                fig_decomp.add_trace(
+                    go.Scatter(x=df['Date'], y=decomposition.resid, name='Residual', line=dict(color='purple')),
+                    row=4, col=1
+                )
+                
+                fig_decomp.update_layout(height=800, title_text="Time Series Decomposition")
+                st.plotly_chart(fig_decomp, use_container_width=True)
+                
+                # Forecasting models
+                st.markdown("### Forecasting Models")
+                
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    forecast_model = st.selectbox(
+                        "Select Model",
+                        ["ARIMA", "Exponential Smoothing", "Prophet", "Linear Regression", "Random Forest"]
+                    )
+                
+                with col2:
+                    train_size = st.slider("Training Data %", 50, 90, 80)
+                
+                with col3:
+                    if st.button("Generate Forecast", type="primary"):
+                        with st.spinner("Generating forecast..."):
+                            # Split data
+                            train_size_idx = int(len(df) * train_size / 100)
+                            train_data = df[pfad_col][:train_size_idx]
+                            test_data = df[pfad_col][train_size_idx:]
+                            
+                            # Simple forecast (using linear regression for demo)
+                            from sklearn.linear_model import LinearRegression
+                            
+                            X_train = np.arange(len(train_data)).reshape(-1, 1)
+                            y_train = train_data.values
+                            
+                            model = LinearRegression()
+                            model.fit(X_train, y_train)
+                            
+                            # Forecast
+                            future_steps = forecast_days
+                            X_future = np.arange(len(df), len(df) + future_steps).reshape(-1, 1)
+                            forecast = model.predict(X_future)
+                            
+                            # Calculate prediction intervals
+                            residuals = y_train - model.predict(X_train)
+                            std_residuals = np.std(residuals)
+                            
+                            # Generate forecast dates
+                            last_date = df['Date'].iloc[-1]
+                            forecast_dates = pd.date_range(start=last_date + pd.Timedelta(days=1), periods=future_steps)
+                            
+                            # Create forecast figure
+                            fig_forecast = go.Figure()
+                            
+                            # Historical data
+                            fig_forecast.add_trace(go.Scatter(
+                                x=df['Date'],
+                                y=df[pfad_col],
+                                mode='lines',
+                                name='Historical',
+                                line=dict(color='blue')
+                            ))
+                            
+                            # Forecast
+                            fig_forecast.add_trace(go.Scatter(
+                                x=forecast_dates,
+                                y=forecast,
+                                mode='lines',
+                                name='Forecast',
+                                line=dict(color='red', dash='dash')
+                            ))
+                            
+                            # Confidence intervals
+                            upper_bound = forecast + 1.96 * std_residuals
+                            lower_bound = forecast - 1.96 * std_residuals
+                            
+                            fig_forecast.add_trace(go.Scatter(
+                                x=forecast_dates,
+                                y=upper_bound,
+                                mode='lines',
+                                name='Upper 95% CI',
+                                line=dict(color='rgba(255,0,0,0.3)'),
+                                showlegend=False
+                            ))
+                            
+                            fig_forecast.add_trace(go.Scatter(
+                                x=forecast_dates,
+                                y=lower_bound,
+                                mode='lines',
+                                name='Lower 95% CI',
+                                line=dict(color='rgba(255,0,0,0.3)'),
+                                fill='tonexty',
+                                fillcolor='rgba(255,0,0,0.1)',
+                                showlegend=False
+                            ))
+                            
+                            fig_forecast.update_layout(
+                                title=f'{forecast_model} Forecast - {forecast_days} Days Ahead',
+                                xaxis_title='Date',
+                                yaxis_title='PFAD Price (₹/ton)',
+                                height=500
+                            )
+                            
+                            st.plotly_chart(fig_forecast, use_container_width=True)
+                            
+                            # Forecast metrics
+                            col1, col2, col3, col4 = st.columns(4)
+                            
+                            with col1:
+                                st.metric(
+                                    "7-Day Forecast",
+                                    f"₹{forecast[6]:,.0f}/ton" if len(forecast) >= 7 else "N/A",
+                                    f"{((forecast[6] - df[pfad_col].iloc[-1]) / df[pfad_col].iloc[-1] * 100):+.2f}%" if len(forecast) >= 7 else "N/A"
+                                )
+                            
+                            with col2:
+                                st.metric(
+                                    "30-Day Forecast",
+                                    f"₹{forecast[-1]:,.0f}/ton",
+                                    f"{((forecast[-1] - df[pfad_col].iloc[-1]) / df[pfad_col].iloc[-1] * 100):+.2f}%"
+                                )
+                            
+                            with col3:
+                                forecast_volatility = np.std(forecast) / np.mean(forecast) * 100
+                                st.metric(
+                                    "Forecast Volatility",
+                                    f"{forecast_volatility:.1f}%",
+                                    "Coefficient of Variation"
+                                )
+                            
+                            with col4:
+                                # Simple accuracy metric (if we have test data)
+                                if len(test_data) > 0:
+                                    test_forecast = model.predict(np.arange(train_size_idx, len(df)).reshape(-1, 1))
+                                    mape = np.mean(np.abs((test_data.values - test_forecast) / test_data.values)) * 100
+                                    st.metric(
+                                        "Model Accuracy",
+                                        f"{100 - mape:.1f}%",
+                                        "Based on test data"
+                                    )
+                
+                # Feature importance for forecasting
+                st.markdown("### Feature Importance for Price Prediction")
+                
+                if len(corr_columns) > 1:
+                    # Random Forest feature importance
+                    from sklearn.ensemble import RandomForestRegressor
+                    from sklearn.preprocessing import StandardScaler
+                    
+                    # Prepare data
+                    feature_cols = [col for col in corr_columns if col != pfad_col]
+                    X = df[feature_cols].dropna()
+                    y = df.loc[X.index, pfad_col]
+                    
+                    # Scale features
+                    scaler = StandardScaler()
+                    X_scaled = scaler.fit_transform(X)
+                    
+                    # Train model
+                    rf_model = RandomForestRegressor(n_estimators=100, random_state=42)
+                    rf_model.fit(X_scaled, y)
+                    
+                    # Feature importance
+                    feature_importance = pd.DataFrame({
+                        'feature': feature_cols,
+                        'importance': rf_model.feature_importances_
+                    }).sort_values('importance', ascending=False)
+                    
+                    fig_importance = px.bar(
+                        feature_importance,
+                        x='importance',
+                        y='feature',
+                        orientation='h',
+                        title='Feature Importance for PFAD Price Prediction',
+                        color='importance',
+                        color_continuous_scale='viridis'
+                    )
+                    
+                    st.plotly_chart(fig_importance, use_container_width=True)
+            
+            with tab5:
+                st.markdown("## ⚠️ Risk Analysis & Management")
+                
+                # Risk metrics
+                col1, col2, col3 = st.columns(3)
+                
+                returns = df['PFAD_Returns'].dropna()
+                
+                with col1:
+                    var_95 = calculate_var(returns, 0.95)
+                    cvar_95 = calculate_cvar(returns, 0.95)
+                    
+                    st.markdown(f"""
+                    <div class="stat-result">
+                        <b>Value at Risk (95%)</b><br>
+                        Daily VaR: {var_95*100:.2f}%<br>
+                        Monthly VaR: {var_95*100*np.sqrt(22):.2f}%<br>
+                        <br>
+                        <b>Conditional VaR (95%)</b><br>
+                        Daily CVaR: {cvar_95*100:.2f}%<br>
+                        Monthly CVaR: {cvar_95*100*np.sqrt(22):.2f}%
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                with col2:
+                    # Maximum drawdown
+                    cumulative_returns = (1 + returns).cumprod()
+                    running_max = cumulative_returns.expanding().max()
+                    drawdown = (cumulative_returns - running_max) / running_max
+                    max_drawdown = drawdown.min()
+                    
+                    st.markdown(f"""
+                    <div class="stat-result">
+                        <b>Maximum Drawdown</b><br>
+                        Value: {max_drawdown*100:.2f}%<br>
+                        <br>
+                        <b>Sharpe Ratio</b><br>
+                        Value: {(returns.mean() / returns.std() * np.sqrt(252)):.2f}<br>
+                        Annualized
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                with col3:
+                    # Tail risk metrics
+                    left_tail = np.percentile(returns, 5)
+                    right_tail = np.percentile(returns, 95)
+                    tail_ratio = abs(left_tail) / right_tail if right_tail != 0 else np.inf
+                    
+                    st.markdown(f"""
+                    <div class="stat-result">
+                        <b>Tail Risk Analysis</b><br>
+                        Left Tail (5%): {left_tail*100:.2f}%<br>
+                        Right Tail (95%): {right_tail*100:.2f}%<br>
+                        Tail Ratio: {tail_ratio:.2f}<br>
+                        <br>
+                        Risk Level: {'High' if tail_ratio > 1.5 else 'Moderate' if tail_ratio > 1 else 'Low'}
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                # Risk visualization
+                st.markdown("### Risk Distribution & Scenarios")
+                
+                # Create risk distribution plot
+                fig_risk = make_subplots(
+                    rows=2, cols=2,
+                    subplot_titles=('Return Distribution with VaR', 'Drawdown Analysis', 
+                                   'Risk Scenarios', 'Volatility Cone')
+                )
+                
+                # Return distribution with VaR
+                fig_risk.add_trace(
+                    go.Histogram(x=returns, nbinsx=50, name='Returns', showlegend=False),
+                    row=1, col=1
+                )
+                
+                # Add VaR lines
+                fig_risk.add_vline(x=var_95, line_dash="dash", line_color="red", row=1, col=1)
+                fig_risk.add_vline(x=cvar_95, line_dash="dash", line_color="darkred", row=1, col=1)
+                
+                # Drawdown chart
+                fig_risk.add_trace(
+                    go.Scatter(x=df['Date'][1:], y=drawdown*100, name='Drawdown', 
+                              fill='tozeroy', fillcolor='rgba(255,0,0,0.3)'),
+                    row=1, col=2
+                )
+                
+                # Monte Carlo risk scenarios
+                n_scenarios = 100
+                n_days = 30
+                
+                scenarios = []
+                current_price = df[pfad_col].iloc[-1]
+                
+                for _ in range(n_scenarios):
+                    scenario = [current_price]
+                    for _ in range(n_days):
+                        daily_return = np.random.normal(returns.mean(), returns.std())
+                        scenario.append(scenario[-1] * (1 + daily_return))
+                    scenarios.append(scenario)
+                
+                # Plot scenarios
+                for i, scenario in enumerate(scenarios):
+                    fig_risk.add_trace(
+                        go.Scatter(x=list(range(n_days+1)), y=scenario, mode='lines',
+                                 line=dict(color='lightblue', width=0.5), showlegend=False),
+                        row=2, col=1
+                    )
+                
+                # Add percentile lines
+                scenarios_array = np.array(scenarios)
+                p5 = np.percentile(scenarios_array, 5, axis=0)
+                p50 = np.percentile(scenarios_array, 50, axis=0)
+                p95 = np.percentile(scenarios_array, 95, axis=0)
+                
+                fig_risk.add_trace(
+                    go.Scatter(x=list(range(n_days+1)), y=p5, name='5th Percentile',
+                             line=dict(color='red', width=2)),
+                    row=2, col=1
+                )
+                fig_risk.add_trace(
+                    go.Scatter(x=list(range(n_days+1)), y=p50, name='Median',
+                             line=dict(color='blue', width=2)),
+                    row=2, col=1
+                )
+                fig_risk.add_trace(
+                    go.Scatter(x=list(range(n_days+1)), y=p95, name='95th Percentile',
+                             line=dict(color='green', width=2)),
+                    row=2, col=1
+                )
+                
+                # Volatility cone
+                periods = [5, 10, 20, 30, 60, 90]
+                vol_data = []
+                
+                for period in periods:
+                    period_vols = []
+                    for i in range(period, len(df)):
+                        period_return = df[pfad_col].iloc[i] / df[pfad_col].iloc[i-period] - 1
+                        annualized_vol = (period_return / period) * np.sqrt(252) * 100
+                        period_vols.append(abs(annualized_vol))
+                    
+                    vol_data.append({
+                        'period': period,
+                        'min': np.percentile(period_vols, 5),
+                        'p25': np.percentile(period_vols, 25),
+                        'median': np.percentile(period_vols, 50),
+                        'p75': np.percentile(period_vols, 75),
+                        'max': np.percentile(period_vols, 95),
+                        'current': period_vols[-1] if period_vols else 0
+                    })
+                
+                vol_df = pd.DataFrame(vol_data)
+                
+                # Plot volatility cone
+                fig_risk.add_trace(
+                    go.Scatter(x=vol_df['period'], y=vol_df['max'], name='95th %ile',
+                             line=dict(color='red', dash='dash')),
+                    row=2, col=2
+                )
+                fig_risk.add_trace(
+                    go.Scatter(x=vol_df['period'], y=vol_df['p75'], name='75th %ile',
+                             line=dict(color='orange', dash='dash')),
+                    row=2, col=2
+                )
+                fig_risk.add_trace(
+                    go.Scatter(x=vol_df['period'], y=vol_df['median'], name='Median',
+                             line=dict(color='blue')),
+                    row=2, col=2
+                )
+                fig_risk.add_trace(
+                    go.Scatter(x=vol_df['period'], y=vol_df['p25'], name='25th %ile',
+                             line=dict(color='orange', dash='dash')),
+                    row=2, col=2
+                )
+                fig_risk.add_trace(
+                    go.Scatter(x=vol_df['period'], y=vol_df['min'], name='5th %ile',
+                             line=dict(color='red', dash='dash')),
+                    row=2, col=2
+                )
+                fig_risk.add_trace(
+                    go.Scatter(x=vol_df['period'], y=vol_df['current'], name='Current',
+                             mode='markers', marker=dict(color='black', size=10)),
+                    row=2, col=2
+                )
+                
+                fig_risk.update_layout(height=800, showlegend=True)
+                st.plotly_chart(fig_risk, use_container_width=True)
+                
+                # Risk mitigation strategies
+                st.markdown("### 🛡️ Risk Mitigation Strategies")
+                
+                current_vol = df['PFAD_Volatility'].iloc[-1] * 100
+                
+                if current_vol > 30:
+                    st.markdown("""
+                    <div class="warning-box">
+                        <b>⚠️ High Volatility Alert</b><br>
+                        Current market volatility is elevated. Consider the following strategies:
+                        <ul>
+                            <li>Reduce position sizes to manage risk exposure</li>
+                            <li>Implement stop-loss orders at key support levels</li>
+                            <li>Consider hedging with futures or options</li>
+                            <li>Increase procurement frequency with smaller volumes</li>
+                        </ul>
+                    </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    st.markdown("""
+                    <div class="success-box">
+                        <b>✅ Normal Market Conditions</b><br>
+                        Market volatility is within normal ranges. Optimal strategies:
+                        <ul>
+                            <li>Maintain standard procurement volumes</li>
+                            <li>Focus on cost averaging strategies</li>
+                            <li>Build inventory during price dips</li>
+                            <li>Lock in favorable rates with forward contracts</li>
+                        </ul>
+                    </div>
+                    """, unsafe_allow_html=True)
+            
+            with tab6:
+                st.markdown("## 🤖 AI-Powered Insights & Recommendations")
+                
+                # Market regime detection
+                current_price = df[pfad_col].iloc[-1]
+                ma_20 = df[pfad_col].rolling(20).mean().iloc[-1]
+                ma_50 = df[pfad_col].rolling(50).mean().iloc[-1]
+                current_vol = df['PFAD_Volatility'].iloc[-1] * 100
+                
+                # Determine market regime
+                if current_price > ma_20 > ma_50:
+                    regime = "Bullish Trend"
+                    regime_color = "#10b981"
+                elif current_price < ma_20 < ma_50:
+                    regime = "Bearish Trend"
+                    regime_color = "#ef4444"
+                else:
+                    regime = "Sideways/Consolidation"
+                    regime_color = "#f59e0b"
+                
+                st.markdown(f"""
+                <div class="insight-card" style="background: linear-gradient(135deg, {regime_color} 0%, {regime_color}dd 100%);">
+                    <h3>📊 Current Market Regime: {regime}</h3>
+                    <p>Price: ₹{current_price:,.0f} | MA20: ₹{ma_20:,.0f} | MA50: ₹{ma_50:,.0f}</p>
+                    <p>Volatility: {current_vol:.1f}% (Annualized)</p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Generate AI insights
+                insights = []
+                
+                # Price trend insight
+                price_change_7d = ((df[pfad_col].iloc[-1] - df[pfad_col].iloc[-8]) / df[pfad_col].iloc[-8] * 100) if len(df) > 7 else 0
+                if abs(price_change_7d) > 5:
+                    insights.append({
+                        'icon': '📈' if price_change_7d > 0 else '📉',
+                        'title': 'Significant Price Movement',
+                        'content': f'PFAD prices have {"increased" if price_change_7d > 0 else "decreased"} by {abs(price_change_7d):.1f}% in the last 7 days. This represents a {"bullish" if price_change_7d > 0 else "bearish"} signal for short-term procurement decisions.'
+                    })
+                
+                # Volatility insight
+                if current_vol > 35:
+                    insights.append({
+                        'icon': '⚡',
+                        'title': 'High Volatility Environment',
+                        'content': f'Current volatility ({current_vol:.1f}%) is significantly above average. Consider smaller, more frequent purchases to average out price fluctuations.'
+                    })
+                elif current_vol < 20:
+                    insights.append({
+                        'icon': '🎯',
+                        'title': 'Low Volatility Opportunity',
+                        'content': f'Market volatility is low ({current_vol:.1f}%), indicating stable conditions. This may be an optimal time for larger volume procurement.'
+                    })
+                
+                # Correlation insight
+                if cpo_col and cpo_col in df.columns:
+                    cpo_corr = df[pfad_col].corr(df[cpo_col])
+                    if abs(cpo_corr) > 0.7:
+                        insights.append({
+                            'icon': '🔗',
+                            'title': 'Strong CPO Correlation',
+                            'content': f'PFAD shows {abs(cpo_corr):.2f} correlation with CPO prices. Monitor CPO futures for early signals on PFAD price movements.'
+                        })
+                
+                # Support/Resistance insight
+                recent_prices = df[pfad_col].iloc[-90:] if len(df) > 90 else df[pfad_col]
+                support = recent_prices.min()
+                resistance = recent_prices.max()
+                price_position = (current_price - support) / (resistance - support)
+                
+                if price_position < 0.3:
+                    insights.append({
+                        'icon': '🛡️',
+                        'title': 'Near Support Level',
+                        'content': f'Prices are near 90-day support at ₹{support:,.0f}. This could be a good entry point for procurement.'
+                    })
+                elif price_position > 0.7:
+                    insights.append({
+                        'icon': '⚠️',
+                        'title': 'Near Resistance Level',
+                        'content': f'Prices are approaching 90-day resistance at ₹{resistance:,.0f}. Consider waiting for a pullback before major purchases.'
+                    })
+                
+                # Seasonal insight
+                current_month = df['Date'].iloc[-1].month
+                monthly_avg = df.groupby(df['Date'].dt.month)[pfad_col].mean()
+                if current_month in monthly_avg.index:
+                    month_rank = monthly_avg.rank()[current_month]
+                    if month_rank <= 3:
+                        insights.append({
+                            'icon': '📅',
+                            'title': 'Favorable Seasonal Period',
+                            'content': f'Historical data shows this month typically has lower prices (ranked {int(month_rank)}/12). Consider increasing procurement.'
+                        })
+                
+                # Display insights
+                for insight in insights:
+                    st.markdown(f"""
+                    <div style="background: #f8f9fa; padding: 1rem; border-radius: 8px; margin: 0.5rem 0; border-left: 4px solid #667eea;">
+                        <h4>{insight['icon']} {insight['title']}</h4>
+                        <p style="margin: 0.5rem 0 0 0;">{insight['content']}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                # Procurement recommendations
+                st.markdown("### 🎯 Procurement Strategy Recommendations")
+                
+                # Calculate recommendation score
+                score = 50  # Base score
+                
+                # Adjust based on price trend
+                if regime == "Bearish Trend":
+                    score += 20
+                elif regime == "Bullish Trend":
+                    score -= 20
+                
+                # Adjust based on volatility
+                if current_vol < 20:
+                    score += 10
+                elif current_vol > 35:
+                    score -= 10
+                
+                # Adjust based on price position
+                if price_position < 0.3:
+                    score += 15
+                elif price_position > 0.7:
+                    score -= 15
+                
+                # Generate recommendation
+                if score >= 70:
+                    recommendation = "STRONG BUY"
+                    rec_color = "#10b981"
+                    strategy = "Execute 70-80% of planned procurement immediately, reserve 20-30% for averaging"
+                elif score >= 50:
+                    recommendation = "MODERATE BUY"
+                    rec_color = "#3b82f6"
+                    strategy = "Execute 40-50% of planned procurement, implement graduated buying over 2-3 weeks"
+                elif score >= 30:
+                    recommendation = "HOLD/WAIT"
+                    rec_color = "#f59e0b"
+                    strategy = "Maintain minimum inventory levels, wait for better entry points"
+                else:
+                    recommendation = "AVOID"
+                    rec_color = "#ef4444"
+                    strategy = "Postpone non-critical procurement, focus on risk management"
+                
+                col1, col2 = st.columns([1, 2])
+                
+                with col1:
+                    st.markdown(f"""
+                    <div style="text-align: center; padding: 2rem; background: {rec_color}; color: white; border-radius: 10px;">
+                        <h2 style="margin: 0;">{recommendation}</h2>
+                        <p style="margin: 0.5rem 0 0 0; font-size: 2rem; font-weight: bold;">{score}/100</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                with col2:
+                    st.markdown(f"""
+                    <div class="stat-result">
+                        <b>Recommended Strategy:</b><br>
+                        {strategy}<br><br>
+                        <b>Key Action Items:</b>
+                        <ul>
+                            <li>Monitor CPO prices for leading indicators</li>
+                            <li>Set price alerts at ₹{support:,.0f} (support) and ₹{resistance:,.0f} (resistance)</li>
+                            <li>Review currency hedging given USD/INR volatility</li>
+                            <li>Consider forward contracts if available</li>
+                        </ul>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                # Export functionality
+                st.markdown("### 📥 Export Analysis Report")
+                
+                if st.button("Generate Excel Report", type="primary"):
+                    # Create Excel report
+                    from io import BytesIO
+                    import xlsxwriter
+                    
+                    output = BytesIO()
+                    workbook = xlsxwriter.Workbook(output, {'in_memory': True})
+                    
+                    # Summary sheet
+                    summary_sheet = workbook.add_worksheet('Executive Summary')
+                    summary_sheet.write('A1', 'PFAD Analytics Report')
+                    summary_sheet.write('A3', 'Current Price')
+                    summary_sheet.write('B3', f'₹{current_price:,.0f}')
+                    summary_sheet.write('A4', 'Market Regime')
+                    summary_sheet.write('B4', regime)
+                    summary_sheet.write('A5', 'Recommendation')
+                    summary_sheet.write('B5', recommendation)
+                    summary_sheet.write('A6', 'Volatility')
+                    summary_sheet.write('B6', f'{current_vol:.1f}%')
+                    
+                    # Data sheet
+                    data_sheet = workbook.add_worksheet('Raw Data')
+                    df.to_excel(workbook, sheet_name='Raw Data', index=False)
+                    
+                    workbook.close()
+                    
+                    st.download_button(
+                        label="📥 Download Report",
+                        data=output.getvalue(),
+                        file_name=f"PFAD_Analytics_Report_{pd.Timestamp.now().strftime('%Y%m%d')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+        
+        else:
+            st.error("PFAD price column not found. Please ensure your data contains a column with 'PFAD' and 'INR' in the name.")
     
     except Exception as e:
-        st.error(f"❌ Error processing file: {str(e)}")
-        st.write("**Troubleshooting tips:**")
-        st.write("• Ensure your file is a valid Excel format (.xlsx or .xls)")
-        st.write("• Check that your data contains numeric values")
-        st.write("• Verify that column names don't contain special characters")
-        st.write("• Make sure you have sufficient data for statistical analysis")
+        st.error(f"Error processing file: {str(e)}")
+        st.info("Please ensure your file contains the required columns: Date, PFAD prices, and other market indicators.")
 
 else:
-    # Enhanced welcome screen
+    # Welcome screen
     st.markdown("""
-    <div style="text-align: center; padding: 4rem 2rem; background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); border-radius: 20px; margin: 2rem 0;">
-        <h2 style="color: #2c3e50; margin-bottom: 2rem;">📊 Advanced PFAD Statistical Analytics</h2>
-        <p style="font-size: 1.3em; color: #34495e; margin-bottom: 2rem;">
-            Professional-grade statistical analysis for strategic procurement decisions
+    <div style="text-align: center; padding: 3rem;">
+        <h2>Welcome to PFAD Advanced Analytics Platform</h2>
+        <p style="font-size: 1.2rem; color: #6b7280; margin: 2rem 0;">
+            Upload your PFAD market data to unlock powerful insights and AI-driven recommendations.
         </p>
         
-        <div style="display: flex; justify-content: space-around; flex-wrap: wrap; margin: 2rem 0;">
-            <div style="flex: 1; min-width: 250px; margin: 1rem; padding: 1.5rem; background: white; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-                <h3 style="color: #667eea;">🔬 Statistical Tests</h3>
-                <p>Confidence intervals, p-values, and significance testing</p>
-            </div>
-            <div style="flex: 1; min-width: 250px; margin: 1rem; padding: 1.5rem; background: white; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-                <h3 style="color: #667eea;">🔄 Bootstrap Analysis</h3>
-                <p>Robust correlation estimates with bootstrap sampling</p>
-            </div>
-            <div style="flex: 1; min-width: 250px; margin: 1rem; padding: 1.5rem; background: white; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-                <h3 style="color: #667eea;">⚡ Power Analysis</h3>
-                <p>Statistical power and effect size interpretation</p>
-            </div>
+        <div style="background: #f8f9fa; padding: 2rem; border-radius: 10px; margin: 2rem auto; max-width: 600px;">
+            <h3>📋 Required Data Format</h3>
+            <p style="text-align: left;">Your Excel/CSV file should contain:</p>
+            <ul style="text-align: left;">
+                <li>Date column</li>
+                <li>PFAD CIF prices (INR/ton)</li>
+                <li>CPO prices (optional)</li>
+                <li>USD/INR exchange rate (optional)</li>
+                <li>Other market indicators (optional)</li>
+            </ul>
         </div>
         
-        <p style="color: #7f8c8d; font-size: 1.1em;">
-            Upload your Excel file to access advanced statistical analysis features
+        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 2rem; border-radius: 10px; margin: 2rem auto; max-width: 600px;">
+            <h3>🚀 Advanced Features</h3>
+            <ul style="text-align: left;">
+                <li>Statistical significance testing (Jarque-Bera, ADF, Anderson-Darling)</li>
+                <li>Risk metrics (VaR, CVaR, Maximum Drawdown)</li>
+                <li>Market regime detection & AI recommendations</li>
+                <li>Monte Carlo simulations & scenario analysis</li>
+                <li>Correlation dynamics & causality testing</li>
+                <li>Export detailed Excel reports</li>
+            </ul>
+        </div>
+        
+        <p style="margin-top: 2rem;">
+            <b>👈 Use the sidebar to upload your data and get started!</b>
         </p>
     </div>
     """, unsafe_allow_html=True)
 
-# Enhanced footer
-st.markdown("---")
+# Footer
 st.markdown("""
-<div style="text-align: center; padding: 1rem; color: #7f8c8d;">
-    <p><strong>PFAD Advanced Statistical Analytics</strong> | Professional Statistical Analysis Platform</p>
-    <p>🔬 Statistical rigor • 📊 Professional insights • ⚡ Evidence-based decisions</p>
+<div style="text-align: center; padding: 2rem; margin-top: 3rem; border-top: 1px solid #e5e7eb;">
+    <p style="color: #6b7280;">
+        PFAD Advanced Analytics Platform v2.0 | Powered by AI & Statistical Intelligence
+    </p>
 </div>
 """, unsafe_allow_html=True)
