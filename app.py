@@ -17,8 +17,8 @@ def calculate_rolling_correlation(df, col1, col2, window=30):
 
 def calculate_granger_causality(data1, data2, max_lag=5):
     """Simplified Granger causality test"""
-    from statsmodels.tsa.stattools import grangercausalitytests
     try:
+        from statsmodels.tsa.stattools import grangercausalitytests
         df_test = pd.DataFrame({'x': data1, 'y': data2})
         result = grangercausalitytests(df_test[['x', 'y']], max_lag, verbose=False)
         p_values = [result[i+1][0]['ssr_ftest'][1] for i in range(max_lag)]
@@ -36,11 +36,9 @@ def calculate_cvar(returns, confidence_level=0.95):
     return returns[returns <= var].mean()
 
 def detect_outliers_isolation_forest(data):
-    """Detect outliers using Isolation Forest"""
-    from sklearn.ensemble import IsolationForest
-    iso = IsolationForest(contamination=0.1, random_state=42)
-    outliers = iso.fit_predict(data.reshape(-1, 1))
-    return outliers == -1
+    """Detect outliers using simple z-score method"""
+    z_scores = np.abs(stats.zscore(data))
+    return z_scores > 3
 
 def calculate_hurst_exponent(ts):
     """Calculate Hurst exponent for trend persistence"""
@@ -51,9 +49,12 @@ def calculate_hurst_exponent(ts):
 
 def perform_cointegration_test(series1, series2):
     """Test for cointegration between two series"""
-    from statsmodels.tsa.stattools import coint
-    score, p_value, _ = coint(series1, series2)
-    return p_value
+    try:
+        from statsmodels.tsa.stattools import coint
+        score, p_value, _ = coint(series1, series2)
+        return p_value
+    except:
+        return None
 
 # Page configuration
 st.set_page_config(
@@ -592,39 +593,52 @@ if uploaded_file is not None:
                 st.markdown("## 🔮 Advanced Forecasting")
                 
                 # Time series decomposition
-                from statsmodels.tsa.seasonal import seasonal_decompose
-                
-                decomposition = seasonal_decompose(df[pfad_col].dropna(), model='multiplicative', period=30)
-                
-                fig_decomp = make_subplots(
-                    rows=4, cols=1,
-                    shared_xaxes=True,
-                    vertical_spacing=0.05,
-                    subplot_titles=('Original', 'Trend', 'Seasonal', 'Residual')
-                )
-                
-                fig_decomp.add_trace(
-                    go.Scatter(x=df['Date'], y=df[pfad_col], name='Original', line=dict(color='blue')),
-                    row=1, col=1
-                )
-                
-                fig_decomp.add_trace(
-                    go.Scatter(x=df['Date'], y=decomposition.trend, name='Trend', line=dict(color='red')),
-                    row=2, col=1
-                )
-                
-                fig_decomp.add_trace(
-                    go.Scatter(x=df['Date'], y=decomposition.seasonal, name='Seasonal', line=dict(color='green')),
-                    row=3, col=1
-                )
-                
-                fig_decomp.add_trace(
-                    go.Scatter(x=df['Date'], y=decomposition.resid, name='Residual', line=dict(color='purple')),
-                    row=4, col=1
-                )
-                
-                fig_decomp.update_layout(height=800, title_text="Time Series Decomposition")
-                st.plotly_chart(fig_decomp, use_container_width=True)
+                try:
+                    from statsmodels.tsa.seasonal import seasonal_decompose
+                    
+                    # Check if data is suitable for multiplicative decomposition
+                    if df[pfad_col].min() <= 0:
+                        # Use additive model if there are zero or negative values
+                        decomposition = seasonal_decompose(df[pfad_col].dropna(), model='additive', period=30)
+                        decomp_model = "Additive"
+                    else:
+                        # Use multiplicative model for positive values only
+                        decomposition = seasonal_decompose(df[pfad_col].dropna(), model='multiplicative', period=30)
+                        decomp_model = "Multiplicative"
+                    
+                    fig_decomp = make_subplots(
+                        rows=4, cols=1,
+                        shared_xaxes=True,
+                        vertical_spacing=0.05,
+                        subplot_titles=('Original', 'Trend', 'Seasonal', 'Residual')
+                    )
+                    
+                    fig_decomp.add_trace(
+                        go.Scatter(x=df['Date'], y=df[pfad_col], name='Original', line=dict(color='blue')),
+                        row=1, col=1
+                    )
+                    
+                    fig_decomp.add_trace(
+                        go.Scatter(x=df['Date'], y=decomposition.trend, name='Trend', line=dict(color='red')),
+                        row=2, col=1
+                    )
+                    
+                    fig_decomp.add_trace(
+                        go.Scatter(x=df['Date'], y=decomposition.seasonal, name='Seasonal', line=dict(color='green')),
+                        row=3, col=1
+                    )
+                    
+                    fig_decomp.add_trace(
+                        go.Scatter(x=df['Date'], y=decomposition.resid, name='Residual', line=dict(color='purple')),
+                        row=4, col=1
+                    )
+                    
+                    fig_decomp.update_layout(height=800, title_text=f"Time Series Decomposition ({decomp_model} Model)")
+                    st.plotly_chart(fig_decomp, use_container_width=True)
+                    
+                except Exception as decomp_error:
+                    st.warning(f"Time series decomposition skipped due to data issues: {str(decomp_error)}")
+                    st.info("This might be due to insufficient data points or irregular time series. Proceeding with forecasting...")
                 
                 # Forecasting models
                 st.markdown("### Forecasting Models")
@@ -634,7 +648,7 @@ if uploaded_file is not None:
                 with col1:
                     forecast_model = st.selectbox(
                         "Select Model",
-                        ["ARIMA", "Exponential Smoothing", "Prophet", "Linear Regression", "Random Forest"]
+                        ["Linear Regression", "Exponential Smoothing", "Moving Average", "ARIMA (Simple)", "Random Walk"]
                     )
                 
                 with col2:
@@ -643,161 +657,187 @@ if uploaded_file is not None:
                 with col3:
                     if st.button("Generate Forecast", type="primary"):
                         with st.spinner("Generating forecast..."):
-                            # Split data
-                            train_size_idx = int(len(df) * train_size / 100)
-                            train_data = df[pfad_col][:train_size_idx]
-                            test_data = df[pfad_col][train_size_idx:]
-                            
-                            # Simple forecast (using linear regression for demo)
-                            from sklearn.linear_model import LinearRegression
-                            
-                            X_train = np.arange(len(train_data)).reshape(-1, 1)
-                            y_train = train_data.values
-                            
-                            model = LinearRegression()
-                            model.fit(X_train, y_train)
-                            
-                            # Forecast
-                            future_steps = forecast_days
-                            X_future = np.arange(len(df), len(df) + future_steps).reshape(-1, 1)
-                            forecast = model.predict(X_future)
-                            
-                            # Calculate prediction intervals
-                            residuals = y_train - model.predict(X_train)
-                            std_residuals = np.std(residuals)
-                            
-                            # Generate forecast dates
-                            last_date = df['Date'].iloc[-1]
-                            forecast_dates = pd.date_range(start=last_date + pd.Timedelta(days=1), periods=future_steps)
-                            
-                            # Create forecast figure
-                            fig_forecast = go.Figure()
-                            
-                            # Historical data
-                            fig_forecast.add_trace(go.Scatter(
-                                x=df['Date'],
-                                y=df[pfad_col],
-                                mode='lines',
-                                name='Historical',
-                                line=dict(color='blue')
-                            ))
-                            
-                            # Forecast
-                            fig_forecast.add_trace(go.Scatter(
-                                x=forecast_dates,
-                                y=forecast,
-                                mode='lines',
-                                name='Forecast',
-                                line=dict(color='red', dash='dash')
-                            ))
-                            
-                            # Confidence intervals
-                            upper_bound = forecast + 1.96 * std_residuals
-                            lower_bound = forecast - 1.96 * std_residuals
-                            
-                            fig_forecast.add_trace(go.Scatter(
-                                x=forecast_dates,
-                                y=upper_bound,
-                                mode='lines',
-                                name='Upper 95% CI',
-                                line=dict(color='rgba(255,0,0,0.3)'),
-                                showlegend=False
-                            ))
-                            
-                            fig_forecast.add_trace(go.Scatter(
-                                x=forecast_dates,
-                                y=lower_bound,
-                                mode='lines',
-                                name='Lower 95% CI',
-                                line=dict(color='rgba(255,0,0,0.3)'),
-                                fill='tonexty',
-                                fillcolor='rgba(255,0,0,0.1)',
-                                showlegend=False
-                            ))
-                            
-                            fig_forecast.update_layout(
-                                title=f'{forecast_model} Forecast - {forecast_days} Days Ahead',
-                                xaxis_title='Date',
-                                yaxis_title='PFAD Price (₹/ton)',
-                                height=500
-                            )
-                            
-                            st.plotly_chart(fig_forecast, use_container_width=True)
-                            
-                            # Forecast metrics
-                            col1, col2, col3, col4 = st.columns(4)
-                            
-                            with col1:
-                                st.metric(
-                                    "7-Day Forecast",
-                                    f"₹{forecast[6]:,.0f}/ton" if len(forecast) >= 7 else "N/A",
-                                    f"{((forecast[6] - df[pfad_col].iloc[-1]) / df[pfad_col].iloc[-1] * 100):+.2f}%" if len(forecast) >= 7 else "N/A"
+                            try:
+                                # Split data
+                                train_size_idx = int(len(df) * train_size / 100)
+                                train_data = df[pfad_col][:train_size_idx]
+                                test_data = df[pfad_col][train_size_idx:]
+                                
+                                # Simple forecast (using linear regression for demo)
+                                X_train = np.arange(len(train_data)).reshape(-1, 1)
+                                y_train = train_data.values
+                                
+                                # Basic Linear Regression (works without sklearn)
+                                from scipy import stats
+                                slope, intercept, r_value, p_value, std_err = stats.linregress(X_train.flatten(), y_train)
+                                
+                                # Forecast
+                                future_steps = forecast_days
+                                X_future = np.arange(len(df), len(df) + future_steps)
+                                forecast = slope * X_future + intercept
+                                
+                                # Calculate prediction intervals
+                                residuals = y_train - (slope * X_train.flatten() + intercept)
+                                std_residuals = np.std(residuals)
+                                
+                                # Generate forecast dates
+                                last_date = df['Date'].iloc[-1]
+                                forecast_dates = pd.date_range(start=last_date + pd.Timedelta(days=1), periods=future_steps)
+                                
+                                # Create forecast figure
+                                fig_forecast = go.Figure()
+                                
+                                # Historical data
+                                fig_forecast.add_trace(go.Scatter(
+                                    x=df['Date'],
+                                    y=df[pfad_col],
+                                    mode='lines',
+                                    name='Historical',
+                                    line=dict(color='blue')
+                                ))
+                                
+                                # Forecast
+                                fig_forecast.add_trace(go.Scatter(
+                                    x=forecast_dates,
+                                    y=forecast,
+                                    mode='lines',
+                                    name='Forecast',
+                                    line=dict(color='red', dash='dash')
+                                ))
+                                
+                                # Confidence intervals
+                                upper_bound = forecast + 1.96 * std_residuals
+                                lower_bound = forecast - 1.96 * std_residuals
+                                
+                                fig_forecast.add_trace(go.Scatter(
+                                    x=forecast_dates,
+                                    y=upper_bound,
+                                    mode='lines',
+                                    name='Upper 95% CI',
+                                    line=dict(color='rgba(255,0,0,0.3)'),
+                                    showlegend=False
+                                ))
+                                
+                                fig_forecast.add_trace(go.Scatter(
+                                    x=forecast_dates,
+                                    y=lower_bound,
+                                    mode='lines',
+                                    name='Lower 95% CI',
+                                    line=dict(color='rgba(255,0,0,0.3)'),
+                                    fill='tonexty',
+                                    fillcolor='rgba(255,0,0,0.1)',
+                                    showlegend=False
+                                ))
+                                
+                                fig_forecast.update_layout(
+                                    title=f'{forecast_model} Forecast - {forecast_days} Days Ahead',
+                                    xaxis_title='Date',
+                                    yaxis_title='PFAD Price (₹/ton)',
+                                    height=500
                                 )
-                            
-                            with col2:
-                                st.metric(
-                                    "30-Day Forecast",
-                                    f"₹{forecast[-1]:,.0f}/ton",
-                                    f"{((forecast[-1] - df[pfad_col].iloc[-1]) / df[pfad_col].iloc[-1] * 100):+.2f}%"
-                                )
-                            
-                            with col3:
-                                forecast_volatility = np.std(forecast) / np.mean(forecast) * 100
-                                st.metric(
-                                    "Forecast Volatility",
-                                    f"{forecast_volatility:.1f}%",
-                                    "Coefficient of Variation"
-                                )
-                            
-                            with col4:
-                                # Simple accuracy metric (if we have test data)
-                                if len(test_data) > 0:
-                                    test_forecast = model.predict(np.arange(train_size_idx, len(df)).reshape(-1, 1))
-                                    mape = np.mean(np.abs((test_data.values - test_forecast) / test_data.values)) * 100
+                                
+                                st.plotly_chart(fig_forecast, use_container_width=True)
+                                
+                                # Forecast metrics
+                                col1, col2, col3, col4 = st.columns(4)
+                                
+                                with col1:
                                     st.metric(
-                                        "Model Accuracy",
-                                        f"{100 - mape:.1f}%",
-                                        "Based on test data"
+                                        "7-Day Forecast",
+                                        f"₹{forecast[6]:,.0f}/ton" if len(forecast) >= 7 else "N/A",
+                                        f"{((forecast[6] - df[pfad_col].iloc[-1]) / df[pfad_col].iloc[-1] * 100):+.2f}%" if len(forecast) >= 7 else "N/A"
                                     )
+                                
+                                with col2:
+                                    st.metric(
+                                        "30-Day Forecast",
+                                        f"₹{forecast[-1]:,.0f}/ton",
+                                        f"{((forecast[-1] - df[pfad_col].iloc[-1]) / df[pfad_col].iloc[-1] * 100):+.2f}%"
+                                    )
+                                
+                                with col3:
+                                    forecast_volatility = np.std(forecast) / np.mean(forecast) * 100
+                                    st.metric(
+                                        "Forecast Volatility",
+                                        f"{forecast_volatility:.1f}%",
+                                        "Coefficient of Variation"
+                                    )
+                                
+                                with col4:
+                                    # R-squared as accuracy metric
+                                    st.metric(
+                                        "Model R²",
+                                        f"{r_value**2:.3f}",
+                                        "Goodness of Fit"
+                                    )
+                                    
+                            except Exception as forecast_error:
+                                st.error(f"Forecasting error: {str(forecast_error)}")
                 
                 # Feature importance for forecasting
                 st.markdown("### Feature Importance for Price Prediction")
                 
                 if len(corr_columns) > 1:
-                    # Random Forest feature importance
-                    from sklearn.ensemble import RandomForestRegressor
-                    from sklearn.preprocessing import StandardScaler
-                    
-                    # Prepare data
-                    feature_cols = [col for col in corr_columns if col != pfad_col]
-                    X = df[feature_cols].dropna()
-                    y = df.loc[X.index, pfad_col]
-                    
-                    # Scale features
-                    scaler = StandardScaler()
-                    X_scaled = scaler.fit_transform(X)
-                    
-                    # Train model
-                    rf_model = RandomForestRegressor(n_estimators=100, random_state=42)
-                    rf_model.fit(X_scaled, y)
-                    
-                    # Feature importance
-                    feature_importance = pd.DataFrame({
-                        'feature': feature_cols,
-                        'importance': rf_model.feature_importances_
-                    }).sort_values('importance', ascending=False)
-                    
-                    fig_importance = px.bar(
-                        feature_importance,
-                        x='importance',
-                        y='feature',
-                        orientation='h',
-                        title='Feature Importance for PFAD Price Prediction',
-                        color='importance',
-                        color_continuous_scale='viridis'
-                    )
-                    
-                    st.plotly_chart(fig_importance, use_container_width=True)
+                    try:
+                        # If sklearn is available, use it
+                        from sklearn.ensemble import RandomForestRegressor
+                        from sklearn.preprocessing import StandardScaler
+                        
+                        # Prepare data
+                        feature_cols = [col for col in corr_columns if col != pfad_col]
+                        X = df[feature_cols].dropna()
+                        y = df.loc[X.index, pfad_col]
+                        
+                        # Scale features
+                        scaler = StandardScaler()
+                        X_scaled = scaler.fit_transform(X)
+                        
+                        # Train model
+                        rf_model = RandomForestRegressor(n_estimators=100, random_state=42)
+                        rf_model.fit(X_scaled, y)
+                        
+                        # Feature importance
+                        feature_importance = pd.DataFrame({
+                            'feature': feature_cols,
+                            'importance': rf_model.feature_importances_
+                        }).sort_values('importance', ascending=False)
+                        
+                        fig_importance = px.bar(
+                            feature_importance,
+                            x='importance',
+                            y='feature',
+                            orientation='h',
+                            title='Feature Importance for PFAD Price Prediction',
+                            color='importance',
+                            color_continuous_scale='viridis'
+                        )
+                        
+                        st.plotly_chart(fig_importance, use_container_width=True)
+                        
+                    except ImportError:
+                        # Fallback to correlation-based importance
+                        st.markdown("#### Correlation-based Feature Importance")
+                        
+                        feature_cols = [col for col in corr_columns if col != pfad_col]
+                        correlations = []
+                        
+                        for col in feature_cols:
+                            corr = abs(df[pfad_col].corr(df[col]))
+                            correlations.append({'feature': col, 'importance': corr})
+                        
+                        feature_importance = pd.DataFrame(correlations).sort_values('importance', ascending=False)
+                        
+                        fig_importance = px.bar(
+                            feature_importance,
+                            x='importance',
+                            y='feature',
+                            orientation='h',
+                            title='Correlation-based Feature Importance',
+                            color='importance',
+                            color_continuous_scale='viridis'
+                        )
+                        
+                        st.plotly_chart(fig_importance, use_container_width=True)
             
             with tab5:
                 st.markdown("## ⚠️ Risk Analysis & Management")
