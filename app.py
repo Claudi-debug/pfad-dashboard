@@ -210,10 +210,20 @@ if uploaded_file is not None:
         df['Date'] = pd.to_datetime(df.iloc[:, 0])
         df = df.sort_values('Date')
         
-        # Identify columns
-        pfad_col = next((col for col in df.columns if 'PFAD' in col.upper() and 'INR' in col.upper()), None)
-        cpo_col = next((col for col in df.columns if 'CPO' in col.upper()), None)
+        # Identify columns based on actual column names
+        pfad_col = next((col for col in df.columns if 'PFAD' in col.upper() and 'RATE' in col.upper()), None)
+        if not pfad_col:  # Fallback to just PFAD
+            pfad_col = next((col for col in df.columns if 'PFAD' in col.upper()), None)
+        
+        cpo_col = next((col for col in df.columns if 'CPO' in col.upper() and 'BMD' in col.upper()), None)
+        if not cpo_col:  # Fallback to just CPO
+            cpo_col = next((col for col in df.columns if 'CPO' in col.upper() and 'VOLUME' not in col.upper()), None)
+        
         usd_inr_col = next((col for col in df.columns if 'USD' in col.upper() and 'INR' in col.upper()), None)
+        malaysia_fob_col = next((col for col in df.columns if 'MALAYSIA' in col.upper() or 'FOB' in col.upper()), None)
+        usd_myr_col = next((col for col in df.columns if 'USD' in col.upper() and 'MYR' in col.upper()), None)
+        brent_col = next((col for col in df.columns if 'BRENT' in col.upper()), None)
+        volume_col = next((col for col in df.columns if 'VOLUME' in col.upper()), None)
         
         if pfad_col:
             # Calculate returns and statistics
@@ -317,10 +327,9 @@ if uploaded_file is not None:
                 )
                 
                 # Volume (if available)
-                if 'Volume' in df.columns or 'CPO Volume' in df.columns:
-                    vol_col = 'Volume' if 'Volume' in df.columns else 'CPO Volume'
+                if volume_col and volume_col in df.columns:
                     fig.add_trace(
-                        go.Bar(x=df['Date'], y=df[vol_col], name='Volume', marker_color='lightblue'),
+                        go.Bar(x=df['Date'], y=df[volume_col], name='CPO Volume', marker_color='lightblue'),
                         row=2, col=1
                     )
                 
@@ -1218,7 +1227,8 @@ if uploaded_file is not None:
                     )
         
         else:
-            st.error("PFAD price column not found. Please ensure your data contains a column with 'PFAD' and 'INR' in the name.")
+            st.error("PFAD price column not found. Please ensure your data contains a column with 'PFAD Rate' or similar.")
+            st.info("Found columns: " + ", ".join(df.columns.tolist()))
     
     except Exception as e:
         st.error(f"Error processing file: {str(e)}")
@@ -1238,10 +1248,13 @@ else:
             <p style="text-align: left;">Your Excel/CSV file should contain:</p>
             <ul style="text-align: left;">
                 <li>Date column</li>
-                <li>PFAD CIF prices (INR/ton)</li>
-                <li>CPO prices (optional)</li>
-                <li>USD/INR exchange rate (optional)</li>
-                <li>Other market indicators (optional)</li>
+                <li>PFAD Rate (prices in INR/ton)</li>
+                <li>CPO BMD Price (optional)</li>
+                <li>Malaysia FOB (optional)</li>
+                <li>USD INR exchange rate (optional)</li>
+                <li>USD MYR exchange rate (optional)</li>
+                <li>Brent crude prices (optional)</li>
+                <li>CPO Volume (optional)</li>
             </ul>
         </div>
         
